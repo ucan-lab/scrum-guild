@@ -263,7 +263,7 @@ h1, h2, h3 { text-wrap: balance; }
   padding-block: var(--space-2) var(--space-10);
   padding-left: max(var(--space-8), env(safe-area-inset-left, 0px));
   padding-right: max(var(--space-8), env(safe-area-inset-right, 0px));
-  max-width: 1320px; width: 100%;
+  width: 100%;
   display: grid; gap: var(--space-8); align-content: start;
 }
 
@@ -1391,7 +1391,8 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 .setting-head { display: grid; gap: var(--space-1); align-content: start; }
 .setting-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-lg); }
 .setting-desc { font-size: var(--text-xs); color: var(--color-muted); line-height: 1.7; }
-.setting-body { display: grid; gap: var(--space-4); min-width: 0; align-content: start; }
+/* 本文は画面の幅いっぱいに広がるので、欄の列だけは読みやすい幅で止める（入力欄が画面の端まで伸びると、行の頭と終わりが遠く、目で追えない） */
+.setting-body { display: grid; gap: var(--space-4); min-width: 0; align-content: start; max-width: 56rem; }
 /* 入力欄を縦に並べる <form>。ダイアログの本文（.dialog-body）の中で、欄どうしの間隔を保つ */
 .form { display: grid; gap: var(--space-4); }
 /* <form> の欄をまとめて disabled にするための <fieldset>（送っている間に欄を変えられなくする）。枠も余白も持たない */

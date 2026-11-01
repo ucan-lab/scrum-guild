@@ -612,3 +612,41 @@ test('画面の build に埋めた版が API の版と同じ', async ({ request 
   expect(res.status()).toBe(200);
   expect(await res.json()).toEqual({ version });
 });
+
+// 本文（.content）は幅の上限を持たない。広い画面でも左のメニューの右から画面の右の端まで広がる
+const WIDE_VIEWPORT = { width: 2400, height: 900 };
+// 縦スクロールバーの幅の余裕
+const SCROLLBAR_ALLOWANCE = 24;
+// .setting-body の上限（design/components.css の 56rem）
+const SETTING_BODY_MAX_PX = 56 * 16;
+
+test('2400px の幅で、本文が画面の右の端まで広がり、畳んでも変わらない', async ({ page }) => {
+  await page.setViewportSize(WIDE_VIEWPORT);
+  await page.goto(today);
+  await page.evaluate(() => localStorage.removeItem('sg-nav-collapsed'));
+  await page.reload();
+
+  const content = page.locator('.content');
+  await expect(content).toBeVisible();
+  const open = await content.boundingBox();
+  expect(open!.x + open!.width).toBeGreaterThan(WIDE_VIEWPORT.width - SCROLLBAR_ALLOWANCE);
+  // 以前の上限（1320px）を超えている
+  expect(open!.width).toBeGreaterThan(1320);
+
+  await page.getByRole('button', { name: 'メニューを畳む' }).click();
+  await expect(page.locator('.app')).toHaveAttribute('data-nav-collapsed', 'true');
+  const folded = await content.boundingBox();
+  expect(folded!.x + folded!.width).toBeGreaterThan(WIDE_VIEWPORT.width - SCROLLBAR_ALLOWANCE);
+  expect(folded!.width).toBeGreaterThan(open!.width);
+});
+
+test('2400px の幅でも、組織の管理の欄の列は読みやすい幅（56rem）で止まる', async ({ context, baseURL, page }) => {
+  await signIn(context, baseURL, 'admin');
+  await page.setViewportSize(WIDE_VIEWPORT);
+  await page.goto('/aoba/admin');
+
+  const body = page.locator('.setting-body').first();
+  await expect(body).toBeVisible();
+  const box = await body.boundingBox();
+  expect(box!.width).toBeLessThanOrEqual(SETTING_BODY_MAX_PX);
+});
