@@ -155,3 +155,23 @@ export async function resetPasswordAccountConsents(): Promise<void> {
 export async function resetAccountConsents(who: keyof typeof SEED_SESSIONS): Promise<void> {
   await executeLocalD1([`DELETE FROM account_consents WHERE account_id = '${SEED_SESSIONS[who].accountId}';`]);
 }
+
+const CONSENT_VERSION = /^\d{4}-\d{2}-\d{2}$/;
+const CONSENT_AT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+// seed のセッションのアカウントに、旧い版の同意の行を1つ入れる（今の版に同意していないが、前の版には同意した人にする）。
+// 前の版に同意した人への「改めました」の案内の e2e（e2e/consent.test.ts）が使う。呼ぶ前後に resetAccountConsents で行を消す。
+// SQL に埋める値は呼ぶ側の固定の値だけだが、形を確かめて、外から来た文字を埋めない約束を守る
+export async function seedOldAccountConsent(
+  who: keyof typeof SEED_SESSIONS,
+  consent: { termsVersion: string; privacyVersion: string; consentedAt: string },
+): Promise<void> {
+  const { termsVersion, privacyVersion, consentedAt } = consent;
+  if (!CONSENT_VERSION.test(termsVersion) || !CONSENT_VERSION.test(privacyVersion) || !CONSENT_AT.test(consentedAt)) {
+    throw new Error('旧い同意の行の版は YYYY-MM-DD、日時は ISO 8601（ミリ秒つきの UTC）で渡す');
+  }
+  await executeLocalD1([
+    `INSERT OR IGNORE INTO account_consents (account_id, terms_version, privacy_version, consented_at) ` +
+      `VALUES ('${SEED_SESSIONS[who].accountId}', '${termsVersion}', '${privacyVersion}', '${consentedAt}');`,
+  ]);
+}

@@ -7,8 +7,12 @@ import { epicDetail, epicPartyAssign, epicPartyJoin, epicPartyLeave } from '../s
 import { taskAssign, taskCreate } from '../src/shared/operations/task/index.ts';
 import type { AnyOperationDefinition } from '../src/shared/operations/define.ts';
 import { createApp } from '../src/server/app.ts';
-import { orgDb, verifyWorkspace } from '../src/server/db/index.ts';
-import { epicPartyAssignOperation } from '../src/server/operations/epic-party.ts';
+import { orgDb, verifyWorkspace, type OrganizationDb } from '../src/server/db/index.ts';
+import {
+  epicPartyAssignOperation,
+  epicPartyJoinOperation,
+  epicPartyLeaveOperation,
+} from '../src/server/operations/epic-party.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
 import {
   AT,
@@ -129,6 +133,158 @@ async function expectError(res: Response, status: number, code: string) {
   expect(await errorCodeOf(res)).toBe(code);
 }
 
+function finishedOf(target: Target) {
+  return { completed_at: '2026-10-22T00:00:00.000Z', completed_by: target.admin.userId! };
+}
+
+// 処理が呼ぶ batch() の直前に、別の要求が先に書いた、という状態を作って処理を直に呼ぶ。
+// 討伐隊の処理は、読み取りも書く文も batch() で送る。batch の番号は 0（1 回目の読み）、1（1 回目の書き込み）、2（2 回目の読み）…
+// の順で、最後にやり直しを使い切った後の読み（6）が続く。before はその番号を受ける
+async function runRacing(
+  operation: typeof epicPartyJoinOperation | typeof epicPartyLeaveOperation | typeof epicPartyAssignOperation,
+  target: Target,
+  person: Person,
+  input: Record<string, unknown>,
+  before: (batch: number, db: OrganizationDb) => Promise<void>,
+) {
+  const db = orgDb(env, target.organization.verified);
+  const actor = { accountId: person.accountId, userId: person.userId, isAdmin: false, invitedOnly: false };
+  const workspace = await verifyWorkspace(db, actor, target.workspace.id);
+  let batches = 0;
+  const racing = new Proxy(db, {
+    get(base, key) {
+      const value = Reflect.get(base, key, base);
+      if (typeof value !== 'function') return value;
+      if (key !== 'batch') return value.bind(base);
+      return async (...args: unknown[]) => {
+        await before(batches++, db);
+        return (value as (...a: unknown[]) => Promise<unknown>).apply(base, args);
+      };
+    },
+  });
+  const context = {
+    db: racing,
+    actor,
+    workspace,
+    input: { workspace_id: target.workspace.id, ...input },
+    defer: () => {},
+  } as never;
+  return (operation.handler as (context: never) => Promise<unknown>)(context);
+}
+
+function setFinished(db: OrganizationDb, target: Target, epicId: string, finished: boolean) {
+  return db.run(
+    db.statement((q) =>
+      q
+        .updateTable('epics')
+        .set(
+          finished
+            ? { completed_at: AT, completed_by: target.admin.userId! }
+            : { completed_at: null, completed_by: null },
+        )
+        .where('id', '=', epicId)
+        .where('workspace_id', '=', target.workspace.id),
+    ),
+  );
+}
+
+// 書く文の batch()（奇数の番号）の直前にエピックを終わらせ、次の読み（偶数の番号）の前に戻す。毎回書き込みに負けるが、読む時点では終わっていない
+const losingEveryWrite = (target: Target, epicId: string) => async (batch: number, db: OrganizationDb) => {
+  await setFinished(db, target, epicId, batch % 2 === 1);
+};
+
+// 最初の 2 回の書き込みは同じように負け、最後の書き込み（番号 5）の直前に終わらせる。やり直しを使い切った後の読み（番号 6）では戻さない
+const finishingBeforeLastWrite = (target: Target, epicId: string) => async (batch: number, db: OrganizationDb) => {
+  if (batch <= 5) await setFinished(db, target, epicId, batch % 2 === 1);
+};
+
+// 読んだ後（最初の書き込みの直前）にエピックが終わる
+const finishingAfterRead = (target: Target, epicId: string) => async (batch: number, db: OrganizationDb) => {
+  if (batch === 1) await setFinished(db, target, epicId, true);
+};
+
+describe('討伐隊の処理の競合', () => {
+  // 3 つの処理を同じ形で確かめる。抜けるは、先に討伐隊にいる状態にしておく
+  const cases = [
+    {
+      name: 'epic-party-join',
+      operation: epicPartyJoinOperation,
+      person: (target: Target) => target.member,
+      withUserId: false,
+      setup: async () => {},
+    },
+    {
+      name: 'epic-party-leave',
+      operation: epicPartyLeaveOperation,
+      person: (target: Target) => target.member,
+      withUserId: false,
+      setup: async (target: Target, epicId: string) => {
+        await createEpicPartyMember(target.organization, epicId, target.member.userId!);
+      },
+    },
+    {
+      name: 'epic-party-assign',
+      operation: epicPartyAssignOperation,
+      person: (target: Target) => target.leader,
+      withUserId: true,
+      setup: async () => {},
+    },
+  ];
+
+  for (const item of cases) {
+    describe(item.name, () => {
+      function run(target: Target, epicId: string, before: (batch: number, db: OrganizationDb) => Promise<void>) {
+        return runRacing(
+          item.operation,
+          target,
+          item.person(target),
+          { epic_id: epicId, ...(item.withUserId ? { user_id: target.member.userId! } : {}) },
+          before,
+        );
+      }
+
+      test('書き込みの直前に毎回別の要求が状態を変えて 3 回負けると、409 の conflict', async () => {
+        const target = await namedTarget();
+        const epic = await epicOf(target);
+        await item.setup(target, epic.id);
+        const before = await partyOf(target, epic.id);
+        await expect(run(target, epic.id, losingEveryWrite(target, epic.id))).rejects.toMatchObject({
+          status: 409,
+          code: 'conflict',
+        });
+        expect(await partyOf(target, epic.id)).toEqual(before);
+        expect(await epicLogsOf(target, epic.id)).toEqual([]);
+      });
+
+      test('読んだ後（最初の書き込みの直前）にエピックが終わると、409 の epic_finished', async () => {
+        const target = await namedTarget();
+        const epic = await epicOf(target);
+        await item.setup(target, epic.id);
+        const before = await partyOf(target, epic.id);
+        await expect(run(target, epic.id, finishingAfterRead(target, epic.id))).rejects.toMatchObject({
+          status: 409,
+          code: 'epic_finished',
+        });
+        expect(await partyOf(target, epic.id)).toEqual(before);
+        expect(await epicLogsOf(target, epic.id)).toEqual([]);
+      });
+
+      test('2 回負けた後の最後の書き込みの直前にエピックが終わると、409 の epic_finished（conflict ではない）', async () => {
+        const target = await namedTarget();
+        const epic = await epicOf(target);
+        await item.setup(target, epic.id);
+        const before = await partyOf(target, epic.id);
+        await expect(run(target, epic.id, finishingBeforeLastWrite(target, epic.id))).rejects.toMatchObject({
+          status: 409,
+          code: 'epic_finished',
+        });
+        expect(await partyOf(target, epic.id)).toEqual(before);
+        expect(await epicLogsOf(target, epic.id)).toEqual([]);
+      });
+    });
+  }
+});
+
 describe('epic-party-join と epic-party-leave', () => {
   test('メンバーは受注して self で加わり、抜けると行が消える。どちらも履歴に残す', async () => {
     const target = await namedTarget();
@@ -241,15 +397,15 @@ describe('epic-party-join と epic-party-leave', () => {
   });
 
   for (const [label, overrides] of Object.entries(finishedEpics)) {
-    test(`${label}したエピックには受注できず、抜けられない（409 の conflict）`, async () => {
+    test(`${label}したエピックには受注できず、抜けられない（409 の epic_finished）`, async () => {
       const target = await namedTarget();
       const epic = await epicOf(target, {
         ...overrides,
         [label === 'クリア' ? 'completed_by' : 'canceled_by']: target.admin.userId!,
       });
-      await expectError(await join(target, epic.id), 409, 'conflict');
+      await expectError(await join(target, epic.id), 409, 'epic_finished');
       await createEpicPartyMember(target.organization, epic.id, target.member.userId!);
-      await expectError(await leave(target, epic.id), 409, 'conflict');
+      await expectError(await leave(target, epic.id), 409, 'epic_finished');
       expect(await partyOf(target, epic.id)).toHaveLength(1);
       expect(await epicLogsOf(target, epic.id)).toEqual([]);
     });
@@ -261,6 +417,9 @@ describe('epic-party-join と epic-party-leave', () => {
     const ids = [
       (await createEpic(foreign.organization, foreign.workspace.id, foreign.admin.userId!)).id,
       (await createEpic(target.organization, target.otherWorkspace.id, target.admin.userId!)).id,
+      // 終わったエピックでも、別の組織・別のワークスペースのものは 409 でなく 404
+      (await createEpic(foreign.organization, foreign.workspace.id, foreign.admin.userId!, finishedOf(foreign))).id,
+      (await createEpic(target.organization, target.otherWorkspace.id, target.admin.userId!, finishedOf(target))).id,
       (await epicOf(target, { deleted_at: '2026-10-21T00:00:00.000Z' })).id,
       '019a0000-0000-7000-8000-00000000ffff',
     ];
@@ -376,13 +535,13 @@ describe('epic-party-assign', () => {
   });
 
   for (const [label, overrides] of Object.entries(finishedEpics)) {
-    test(`${label}したエピックには割り振れない（409 の conflict）`, async () => {
+    test(`${label}したエピックには割り振れない（409 の epic_finished）`, async () => {
       const target = await namedTarget();
       const epic = await epicOf(target, {
         ...overrides,
         [label === 'クリア' ? 'completed_by' : 'canceled_by']: target.admin.userId!,
       });
-      await expectError(await assign(target, epic.id, target.member.userId!), 409, 'conflict');
+      await expectError(await assign(target, epic.id, target.member.userId!), 409, 'epic_finished');
       expect(await partyOf(target, epic.id)).toEqual([]);
     });
   }
@@ -392,6 +551,22 @@ describe('epic-party-assign', () => {
     const foreign = await createTarget();
     const epic = await createEpic(foreign.organization, foreign.workspace.id, foreign.admin.userId!);
     await expectError(await assign(target, epic.id, target.member.userId!), 404, 'not_found');
+    // 終わったエピックでも、別の組織・別のワークスペースのものは 409 でなく 404
+    const foreignFinished = await createEpic(
+      foreign.organization,
+      foreign.workspace.id,
+      foreign.admin.userId!,
+      finishedOf(foreign),
+    );
+    const otherFinished = await createEpic(
+      target.organization,
+      target.otherWorkspace.id,
+      target.admin.userId!,
+      finishedOf(target),
+    );
+    for (const id of [foreignFinished.id, otherFinished.id]) {
+      await expectError(await assign(target, id, target.member.userId!), 404, 'not_found');
+    }
   });
 
   test('読んだ後に依頼主が替わったら、書く文の条件で止まり、403 で何も書かない', async () => {

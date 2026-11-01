@@ -38,6 +38,33 @@ for (const { path, title, version } of pages) {
   });
 }
 
+for (const { path, title } of pages) {
+  test(`${path}#revision-history を開くと、改定の履歴の節が見える位置まで移り、本文の下、ボタンの行の上にある`, async ({
+    page,
+  }) => {
+    await page.goto(`${path}#revision-history`);
+    await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible();
+    const section = page.locator('#revision-history');
+    await expect(section.getByRole('heading', { level: 2, name: '改定の履歴' })).toBeVisible();
+    await expect(section.getByRole('listitem').first()).toHaveText('2026-10-31 制定');
+    // 長い文面の途中まで読み進めた位置ではなく、節が画面に入るところまで移っている
+    await expect(section).toBeInViewport();
+
+    // 本文の最後の節（運営者と問い合わせ先）の下、関連するページへのボタンの行の上
+    const operator = page.getByRole('heading', { level: 2, name: '運営者と問い合わせ先' });
+    const links = page.getByRole('group', { name: '関連するページ' });
+    const [operatorBox, sectionBox, linksBox] = [
+      await operator.boundingBox(),
+      await section.boundingBox(),
+      await links.boundingBox(),
+    ];
+    expect(operatorBox?.y).toBeLessThan(sectionBox?.y ?? 0);
+    expect((sectionBox?.y ?? 0) + (sectionBox?.height ?? 0)).toBeLessThanOrEqual(linksBox?.y ?? 0);
+    // 履歴の見出しは、本文の条の見出しと同じ段（h2）で、履歴は1か所だけ
+    await expect(page.getByRole('heading', { level: 2, name: '改定の履歴' })).toHaveCount(1);
+  });
+}
+
 test('/privacy に、預かるもの、預からないもの（取り込み元の本文の既定）、消す時期（解約から 30 日）が書かれている', async ({
   page,
 }) => {

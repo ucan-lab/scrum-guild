@@ -390,8 +390,10 @@ export const dictionary = defineDictionary({
   // 受注と抜けるが 403（ワークスペースに所属していない）
   epicPartyForbidden: 'この{workspace}に所属していないため、{party}を変えられません',
   epicPartyUpdating: '{party}を更新しています',
-  // 終わった（クリアか中止した）エピックの討伐隊は変えられない（409 の conflict）
+  // 終わった（クリアか中止した）エピックの討伐隊は変えられない（409 の epic_finished）
   epicPartyFinished: 'この{epic}は終わっているので、{party}を変えられません',
+  // 書き込みの競合に 3 回続けて負けた（409 の conflict）。画面を読み直すと実際の状態が見え、押し直せる
+  epicPartyConflict: 'ほかの変更と重なりました。もう一度試してください',
   // 受注と抜けるが 404。エピックが消えたか、呼んだ人がもう所属していない
   epicPartyGone: '{epic}が見つからないか、{workspace}に所属していないため、{party}を変えられません',
   epicPartyFailed: '{party}を更新できませんでした。もう一度試してください',
@@ -418,8 +420,9 @@ export const dictionary = defineDictionary({
   epicRewardChanged: '{reward}を「{tier}」に変えました',
   epicRewardAlready: '{reward}はもう「{tier}」です',
   epicRewardForbidden: '{reward}を変えられるのは、{requester}と{leader}だけです',
-  // 報酬の変更が 409（終わったエピック）
+  // 報酬の変更が 409 の epic_finished（終わったエピック）と、conflict（書き込みの競合に 3 回続けて負けた）
   epicRewardFinished: 'この{epic}は終わっているので、{reward}を変えられません',
+  epicRewardConflict: 'ほかの変更と重なりました。もう一度試してください',
   epicRewardGone: '{epic}が見つかりません',
   epicRewardFailed: '{reward}を変えられませんでした。もう一度試してください',
   // 依頼主を替えるダイアログ。候補は member-list の今所属している人のうち、今の依頼主でない人
@@ -433,7 +436,9 @@ export const dictionary = defineDictionary({
   epicRequesterAlready: '{requester}はもう「{name}」です',
   epicRequesterGone: '選んだ人は{workspace}に所属していないか、{epic}が見つかりません。選び直してください。',
   epicRequesterForbidden: '{requester}を替えられるのは、{leader}だけです',
+  // 409 の epic_finished（終わったエピック）と、conflict（書き込みの競合に 3 回続けて負けた）
   epicRequesterFinished: 'この{epic}は終わっているので、{requester}を替えられません',
+  epicRequesterConflict: 'ほかの変更と重なりました。もう一度試してください',
   epicRequesterFailed: '{requester}を替えられませんでした。もう一度試してください',
   // 進み具合の棒の読み上げ（kit.js の progress の aria-label）と、棒の横の数
   progressLabel: '{done} {value} / {all} {points}',
@@ -776,19 +781,6 @@ export const dictionary = defineDictionary({
   operatorReassignRejected:
     '指名し直せませんでした。何も書かれていません。入力を確かめるか、少し待ってから、もう一度試してください。',
 
-  // API の疎通の表示（仮の画面）
-  apiHeading: 'API の疎通',
-  apiStatus: 'API: {status}（版 {version}）',
-  apiChecking: 'API を確かめています',
-  apiUnreachable: 'API に届きませんでした',
-  apiUnreachableStatus: 'API に届きませんでした（{status}）',
-  apiShowDetail: '詳細を見る',
-  apiRecheck: '確かめ直す',
-  apiRecheckOk: 'API を確かめました',
-  apiRecheckFailed: 'API に届きませんでした',
-  apiDetailTitle: 'API の詳細',
-  apiDetailBody: 'この画面が呼んだ API の応答です。',
-
   // アカウントのメニュー（組織の中の上の帯）とログアウト。{name} はログインしている人の名前
   accountMenuLabel: '{name}。アカウントのメニュー',
   logout: 'ログアウト',
@@ -1013,6 +1005,13 @@ export const dictionary = defineDictionary({
   consentSubmitHint: '利用規約とプライバシーポリシーを確認し、印を付けてください。',
   consentLoadFailed: '同意の状態を読み込めませんでした。もう一度試してください。',
   consentRecordFailed: '同意を記録できませんでした。もう一度試してください。',
+  // 前の版に同意した人が開いたときの「改めました」の案内（改めた文書の名前は termsTitle、privacyTitle、改定日は legalRevised を使う）。
+  // 履歴へのリンクの読み上げは「改定の履歴を見る （利用規約） 新しいタブで開きます」で、どの文書の履歴かを補う
+  consentRevisedTerms: '利用規約が改められました',
+  consentRevisedPrivacy: 'プライバシーポリシーが改められました',
+  consentRevisedBoth: '利用規約とプライバシーポリシーが改められました',
+  consentRevisedHistory: '改定の履歴を見る',
+  consentRevisedHistoryOf: '（{document}）',
 
   // テーマ
   themeLabel: 'テーマ',
