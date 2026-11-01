@@ -389,6 +389,27 @@ describe('task-today-mark', () => {
       expect(await logsOf(target, task.id)).toEqual([]);
     });
 
+    test('読んだ後にバックログから外れたら（アーカイブへ移った）、次の周の読み取りで 404 になり、今日やるの印も履歴も書かない', async () => {
+      const target = await createTarget();
+      const task = await mine(target);
+      await expect(
+        runWithRace(target, { task_id: task.id, marked: true }, async (n) => {
+          if (n === 1)
+            // バックログの外は取り込んだタスクだけで、スプリント、列、親は持たない（表の CHECK）
+            await setRow(target, task.id, {
+              tray: 'archive',
+              is_imported: 1,
+              created_by: null,
+              sprint_id: null,
+              column_id: null,
+              story_id: null,
+            });
+        }),
+      ).rejects.toMatchObject({ status: 404, code: 'not_found' });
+      expect((await rowOf(target, task.id))!.today_on).toBeNull();
+      expect(await logsOf(target, task.id)).toEqual([]);
+    });
+
     test('読んだ後に完了にされたら、409 の conflict（completed）で何も書かない', async () => {
       const target = await createTarget();
       const task = await mine(target, { points: 2 });
