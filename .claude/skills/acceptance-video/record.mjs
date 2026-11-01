@@ -3,7 +3,7 @@
 // 使い方（ワークツリーの根で。先に pnpm preview と pnpm db:seed）:
 //   node .claude/skills/acceptance-video/record.mjs <steps.json> <出力のディレクトリ>
 //   node .claude/skills/acceptance-video/record.mjs --check <steps.json>    手順書の形と、見積もりの長さを確かめる
-//   node .claude/skills/acceptance-video/record.mjs --probe <steps.json>    録画せずに、要素の指し方が実画面に在るかを試す（書き込みの操作は実行しない）
+//   node .claude/skills/acceptance-video/record.mjs --probe <steps.json>    録画せずに、要素の指し方が実画面に在るかを試す（click などまで実行し seed の行を書き換えるので、終わったら pnpm db:seed で戻す）
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
@@ -14,16 +14,16 @@ import {
   HOLD_MS,
   MARK_MS,
   PAUSE_MS,
-  PROBE_TIMEOUT_MS,
   READ_MS,
   RESULT_MS,
-  describeItem,
   estimateSeconds,
+  formatProbeLine,
   pausesAfter,
   probePlan,
   runProbe,
   validatePlan,
 } from './plan.mjs';
+import { locate, probeExec } from './probe.mjs';
 
 // 録画の画面。上に 80px の帯を足して 1280×720 にする（compose.py）
 const VIEWPORT = { width: 1280, height: 640 };
@@ -50,15 +50,6 @@ function readPlan(path) {
   return { plan, seconds };
 }
 
-function locate(page, spec) {
-  const scope = spec.within ? locate(page, spec.within) : page;
-  let locator;
-  if (spec.css) locator = scope.locator(spec.css);
-  else if (spec.role) locator = scope.getByRole(spec.role, { name: spec.name, exact: spec.exact });
-  else locator = scope.getByLabel(spec.label);
-  return spec.nth === undefined ? locator : locator.nth(spec.nth);
-}
-
 // ワークツリーの根（cwd）の Playwright、seed のセッション、ポートで、seed のセッションを持つブラウザを開く。
 // 録画と試しで、向き先と外へ出さない制限を同じにする
 async function openSession(plan, contextOptions) {
@@ -77,16 +68,23 @@ async function openSession(plan, contextOptions) {
   console.log(`root: ${root}\nbase: ${base}`);
 
   const browser = await chromium.launch();
-  const context = await browser.newContext({ viewport: VIEWPORT, timezoneId: 'Asia/Tokyo', ...contextOptions });
-  await context.addCookies([{ name: sessionCookieName(base), value: SEED_SESSIONS[who].token, url: base, httpOnly: true }]);
-  // 手順書の操作（リンクを押す、アドレスを入れる）で、手元のブラウザが preview の外のページへ移らないようにする。
-  // 止めるのは別オリジンへのナビゲーションだけで、画像や API などの別オリジンの読み込みは止めない
-  await context.route('**/*', async (route) => {
-    const request = route.request();
-    if (request.isNavigationRequest() && new URL(request.url()).origin !== base) return route.abort();
-    return route.continue();
-  });
-  return { browser, context, base };
+  try {
+    const context = await browser.newContext({ viewport: VIEWPORT, timezoneId: 'Asia/Tokyo', ...contextOptions });
+    await context.addCookies([
+      { name: sessionCookieName(base), value: SEED_SESSIONS[who].token, url: base, httpOnly: true },
+    ]);
+    // 手順書の操作（リンクを押す、アドレスを入れる）で、手元のブラウザが preview の外のページへ移らないようにする。
+    // 止めるのは別オリジンへのナビゲーションだけで、画像や API などの別オリジンの読み込みは止めない
+    await context.route('**/*', async (route) => {
+      const request = route.request();
+      if (request.isNavigationRequest() && new URL(request.url()).origin !== base) return route.abort();
+      return route.continue();
+    });
+    return { browser, context, base };
+  } catch (err) {
+    await browser.close();
+    throw err;
+  }
 }
 
 // 録画しない試し。手順書を録画と同じ操作で最後まで通し（待ちは省く）、場面ごとに指し方が実画面に在るかを一覧にする。
@@ -97,28 +95,17 @@ async function probe(planPath) {
   let results;
   try {
     const page = await context.newPage();
-    const timeout = PROBE_TIMEOUT_MS;
-    const exec = async ({ kind, spec, action, path }) => {
-      if (kind === 'goto') {
-        const response = await page.goto(base + path, { timeout });
-        if (response && response.status() >= 400) throw new Error(`HTTP ${response.status()}`);
-      } else if (kind === 'mark') await locate(page, spec).waitFor({ state: 'attached', timeout });
-      else if (kind === 'click') await locate(page, spec).click({ timeout });
-      else if (kind === 'check') await locate(page, spec).check({ timeout });
-      else if (kind === 'select') await locate(page, spec).selectOption({ label: action.label }, { timeout });
-      else if (kind === 'fill') await locate(page, spec).fill(action.text, { timeout });
-      else await locate(page, spec).waitFor({ state: action.state ?? 'visible', timeout });
-    };
-    results = await runProbe(probePlan(plan), exec);
+    results = await runProbe(probePlan(plan), probeExec(page, base));
   } finally {
     await context.close();
     await browser.close();
   }
-  for (const r of results) {
-    const verdict = { found: '在る', missing: '見つからない', skipped: '試せなかった' }[r.status];
-    const tail = r.status === 'skipped' ? `（${r.reason}）` : r.detail ? `（${r.detail}）` : '';
-    console.log(`場面 ${r.step}: ${verdict}: ${describeItem(r)}${tail}`);
+  // preview に届かないのは指し方の誤りでないので、一覧でなく環境の問題として知らせる
+  if (results[0]?.status === 'missing' && /ERR_CONNECTION_REFUSED|ECONNREFUSED/.test(results[0].detail)) {
+    console.error('preview に届かない（先に pnpm preview を立て、応答を確かめる）');
+    process.exit(2);
   }
+  for (const r of results) console.log(formatProbeLine(r));
   const count = (status) => results.filter((r) => r.status === status).length;
   console.log(`試した ${count('found') + count('missing')}、見つからない ${count('missing')}、試せなかった ${count('skipped')}`);
   if (count('missing') > 0) process.exit(1);

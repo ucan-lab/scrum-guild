@@ -127,6 +127,8 @@ export function validatePlan(plan) {
 
 // 録画の前の試し（record.mjs --probe）で、要素を待つ上限。録画本番の待ち（30 秒）を待たずに、見つからないと分かる長さ
 export const PROBE_TIMEOUT_MS = 5000;
+// goto は画面の読み込みを待つので長くする（preview の起動直後に、偽の「見つからない」を出さない）
+export const PROBE_GOTO_TIMEOUT_MS = 30_000;
 
 /** 要素の指し方を、報告に出す 1 行にする */
 export function describeLocator(spec) {
@@ -163,8 +165,30 @@ export function probePlan(plan) {
 /** 報告に出す、項目の 1 行 */
 export function describeItem(item) {
   if (item.kind === 'goto') return `goto ${item.path}`;
-  const state = item.kind === 'wait' && item.action.state ? ` state=${item.action.state}` : '';
-  return `${item.kind} ${describeLocator(item.spec)}${state}`;
+  const extra = { wait: 'state', select: 'label', fill: 'text' }[item.kind];
+  const value = extra && item.action[extra] !== undefined ? ` ${extra}=${JSON.stringify(item.action[extra])}` : '';
+  return `${item.kind} ${describeLocator(item.spec)}${value}`;
+}
+
+// 要素は在るのに操作できない理由（無効、隠れている、覆われている）。Playwright の Call log にだけ出るので、1 行目に足す
+const BLOCKED_REASON = /not (enabled|visible|stable|editable)|intercepts pointer events|strict mode violation|resolved to \d+/;
+
+/** 試しの結果 1 件の、報告の 1 行 */
+export function formatProbeLine(r) {
+  let verdict = { found: '在る', missing: '見つからない', skipped: '試せなかった' }[r.status];
+  // hidden と detached は、要素が最初から無くても通るので、在ることを示さない
+  if (r.status === 'found' && r.kind === 'wait' && ['hidden', 'detached'].includes(r.action.state)) {
+    verdict = '通った（存在は未確認）';
+  }
+  const tail = r.status === 'skipped' ? `（${r.reason}）` : r.detail ? `（${r.detail}）` : '';
+  return `場面 ${r.step}: ${verdict}: ${describeItem(r)}${tail}`;
+}
+
+/** 失敗の理由。1 行目に、指し方が違うのか、在るのに操作できないのかを分ける行を足す */
+export function probeDetail(message) {
+  const [first, ...rest] = String(message).split('\n');
+  const reasons = [...new Set(rest.map((line) => line.trim().replace(/^-\s*/, '')).filter((line) => BLOCKED_REASON.test(line)))];
+  return [first, ...reasons.slice(0, 2)].join(' / ');
 }
 
 /**
@@ -186,7 +210,7 @@ export async function runProbe(items, exec) {
       await exec(item);
       results.push({ ...item, status: 'found' });
     } catch (err) {
-      results.push({ ...item, status: 'missing', detail: String(err.message).split('\n')[0] });
+      results.push({ ...item, status: 'missing', detail: probeDetail(err.message) });
       blockedBy = `場面 ${item.step} の ${describeItem(item)} が見つからず、次の goto までは画面の状態が分からない`;
     }
   }
