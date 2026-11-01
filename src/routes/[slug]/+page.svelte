@@ -68,9 +68,10 @@
   // 今この画面で完了にした行。判を押す動き（.is-new）はこの行だけで再生する
   let justDoneIds = $state<string[]>([]);
 
-  // afterReload は、読み直した後の今日の読み取りを見て知らせる文を決めるとき（message と icon は使わない）
+  // notice は、すぐ出す知らせ。読み直した後の今日の読み取りを見て決めるときは、読み直しの後に呼ぶ関数にする
   type Notice = { message: string; icon: 'check' | 'alert' };
-  type Outcome = Notice & { reload: boolean; focus: string; afterReload?: () => Notice };
+  type Outcome = { notice: Notice | (() => Notice); reload: boolean; focus: string };
+  const notify = (message: string, icon: Notice['icon']): Notice => ({ message, icon });
 
   // 読み直した後、同じ行の操作（selector）へフォーカスを戻す。行が無いか、フォーカスが行の中に入らなかったとき
   // （畳んだ区分の中など）は見出しへ
@@ -98,11 +99,19 @@
         await invalidate('app:today');
         return;
       }
-      if (outcome.afterReload === undefined) showToast(outcome.message, outcome.icon);
-      if (outcome.reload) await invalidate('app:today');
-      if (outcome.afterReload !== undefined) {
+      const deferred = typeof outcome.notice === 'function' ? outcome.notice : undefined;
+      if (typeof outcome.notice !== 'function') showToast(outcome.notice.message, outcome.notice.icon);
+      if (outcome.reload) {
+        // 読み直しに失敗しても、知らせは出す（読み直せなかった今の読み取りで決める）
+        try {
+          await invalidate('app:today');
+        } catch {
+          // 知らせとフォーカスは続ける
+        }
+      }
+      if (deferred !== undefined) {
         await tick();
-        const notice = outcome.afterReload();
+        const notice = deferred();
         showToast(notice.message, notice.icon);
       }
       await focusRow(task.id, outcome.focus);
@@ -114,11 +123,10 @@
   // 404 と、閉じたワークスペースの 409 は、どの操作でも同じ知らせにして読み直す
   function gone(result: { status: number; error: { code: string } | null }, focus: string): Outcome | null {
     if (result.status === 404)
-      return { message: t('taskGone', { task: t('task') }), icon: 'alert', reload: true, focus };
+      return { notice: notify(t('taskGone', { task: t('task') }), 'alert'), reload: true, focus };
     if (result.status === 409 && result.error?.code === 'workspace_closed') {
       return {
-        message: t('workspaceClosedReadOnly', { workspace: t('workspace') }),
-        icon: 'alert',
+        notice: notify(t('workspaceClosedReadOnly', { workspace: t('workspace') }), 'alert'),
         reload: true,
         focus,
       };
@@ -139,7 +147,7 @@
       (result) => {
         const focus = '.sun';
         if (result.ok) {
-          return { message: t(marked ? 'todayMarked' : 'todayUnmarked'), icon: 'check', reload: true, focus };
+          return { notice: notify(t(marked ? 'todayMarked' : 'todayUnmarked'), 'check'), reload: true, focus };
         }
         if (result.status === 401) return null;
         const refused = gone(result, focus);
@@ -152,9 +160,9 @@
               : reason === 'completed'
                 ? t('todayMarkDone', { task: t('task'), done: t('done') })
                 : t('todayMarkFailed');
-          return { message, icon: 'alert', reload: true, focus };
+          return { notice: notify(message, 'alert'), reload: true, focus };
         }
-        return { message: t('todayMarkFailed'), icon: 'alert', reload: false, focus };
+        return { notice: notify(t('todayMarkFailed'), 'alert'), reload: false, focus };
       },
     );
   }
@@ -168,27 +176,28 @@
         const focus = '.hanko';
         if (result.ok) {
           if (!justDoneIds.includes(task.id)) justDoneIds = [...justDoneIds, task.id];
-          return { message: completedMessage(result.data.left_sprint, t), icon: 'check', reload: true, focus };
+          return { notice: notify(completedMessage(result.data.left_sprint, t), 'check'), reload: true, focus };
         }
         if (result.status === 401) return null;
         const refused = gone(result, focus);
         if (refused !== null) return refused;
-        // 409 の conflict は、別の画面で先に完了にされたか、競合でやり直しきれなかったか。読み直して完了していた行だけ「すでに完了」にし、
-        // 完了していなければ失敗として知らせる
+        // 409 の conflict は、別の画面で先に完了にされたか、競合でやり直しきれなかったか。読み直して、完了していた行は「すでに完了」、
+        // 行が読み取りから外れていた（日付をまたいだ、担当替え、削除）ときは「見つからない」、未完了のまま残ったときは失敗として知らせる
         if (result.status === 409 && result.error?.code === 'conflict') {
           return {
-            message: t('taskCompleteFailed', { done: t('done') }),
-            icon: 'alert',
             reload: true,
             // 完了していれば完了の印へ、していなければ完了のボタンへ
             focus: '.hanko, .done-btn',
-            afterReload: () =>
-              data.today?.tasks.some((entry) => entry.id === task.id && entry.completed_at !== null)
-                ? { message: t('taskAlreadyDone', { task: t('task'), done: t('done') }), icon: 'check' }
-                : { message: t('taskCompleteFailed', { done: t('done') }), icon: 'alert' },
+            notice: () => {
+              const entry = data.today?.tasks.find((candidate) => candidate.id === task.id);
+              if (entry === undefined) return notify(t('taskGone', { task: t('task') }), 'alert');
+              return entry.completed_at !== null
+                ? notify(t('taskAlreadyDone', { task: t('task'), done: t('done') }), 'check')
+                : notify(t('taskCompleteFailed', { done: t('done') }), 'alert');
+            },
           };
         }
-        return { message: t('taskCompleteFailed', { done: t('done') }), icon: 'alert', reload: false, focus };
+        return { notice: notify(t('taskCompleteFailed', { done: t('done') }), 'alert'), reload: false, focus };
       },
     );
   }
@@ -217,8 +226,7 @@
         if (result.ok) {
           justDoneIds = justDoneIds.filter((id) => id !== task.id);
           return {
-            message: t('taskReopened', { task: t('task'), done: t('done') }),
-            icon: 'check',
+            notice: notify(t('taskReopened', { task: t('task'), done: t('done') }), 'check'),
             reload: true,
             focus: '.done-btn',
           };
@@ -227,9 +235,13 @@
         const refused = gone(result, '.hanko');
         if (refused !== null) return refused;
         if (result.status === 409) {
-          return { message: reopenFailureMessage(result.error?.details), icon: 'alert', reload: true, focus: '.hanko' };
+          return {
+            notice: notify(reopenFailureMessage(result.error?.details), 'alert'),
+            reload: true,
+            focus: '.hanko',
+          };
         }
-        return { message: t('taskReopenFailed', { done: t('done') }), icon: 'alert', reload: false, focus: '.hanko' };
+        return { notice: notify(t('taskReopenFailed', { done: t('done') }), 'alert'), reload: false, focus: '.hanko' };
       },
     );
   }

@@ -409,10 +409,14 @@ test('行が消えていて印を 404 で断られたら、読み直して行を
   await expect(page.getByRole('heading', { level: 1, name: '今日やること' })).toBeFocused();
 });
 
-test('完了を 409 の conflict で断られたとき、読み直して完了していれば「すでに完了」、未完了のままなら失敗の知らせを出す', async ({
+test('完了を 409 の conflict で断られたとき、読み直して完了していれば「すでに完了」、行が外れていれば「見つかりません」、未完了のままなら失敗の知らせを出す', async ({
   page,
 }) => {
-  const tasks = [row('先に完了された', { today_on: TODAY }), row('競合に負け続けた', { today_on: TODAY })];
+  const tasks = [
+    row('先に完了された', { today_on: TODAY }),
+    row('読み取りから外れた', { today_on: TODAY }),
+    row('競合に負け続けた', { today_on: TODAY }),
+  ];
   await routeOperation(page, today, { slug: 'aoba' }, (call) => call.fulfill({ tasks, sprint_goals: [] }));
   await routeOperation(page, taskComplete, { slug: 'aoba' }, (call) => {
     if (call.input.task_id === '先に完了された') {
@@ -423,6 +427,13 @@ test('完了を 409 の conflict で断られたとき、読み直して完了�
         reopenable: true,
       });
     }
+    if (call.input.task_id === '読み取りから外れた') {
+      // 日付をまたいだ後に別の画面で完了にされ、今日の読み取りに載らなくなった
+      tasks.splice(
+        tasks.findIndex((entry) => entry.id === '読み取りから外れた'),
+        1,
+      );
+    }
     return call.fail(409, 'conflict');
   });
   await page.goto('/aoba');
@@ -430,6 +441,9 @@ test('完了を 409 の conflict で断られたとき、読み直して完了�
   await page.getByRole('button', { name: '完了にする: 先に完了された' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'このタスクは、すでに完了です' })).toBeVisible();
   await expect(region(page, '今日の完了').locator('.entry-title')).toHaveText(['先に完了された']);
+
+  await page.getByRole('button', { name: '完了にする: 読み取りから外れた' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'このタスクは見つかりません' })).toBeVisible();
 
   await page.getByRole('button', { name: '完了にする: 競合に負け続けた' }).click();
   await expect(page.getByRole('status').filter({ hasText: '完了にできませんでした' })).toBeVisible();
