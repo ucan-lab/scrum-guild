@@ -162,7 +162,9 @@ function renderPanel(item, judge) {
 
 function renderTab(item) {
   const n = item.issue;
-  return `<button type="button" role="tab" id="tab-${n}"${item.done === true ? ' class="done"' : ''} aria-controls="panel-${n}" aria-selected="false" tabindex="-1" data-tab="${n}">#${n}<span class="mark" data-mark="${n}"></span></button>`;
+  // 完了済みは点線の見た目だけでなく、読み上げる名前にも出す（区切りの #tabs-sep は読み上げから外してある）
+  const doneAttrs = item.done === true ? ` class="done" aria-label="#${n} 完了済み"` : '';
+  return `<button type="button" role="tab" id="tab-${n}"${doneAttrs} aria-controls="panel-${n}" aria-selected="false" tabindex="-1" data-tab="${n}">#${n}<span class="mark" data-mark="${n}"></span></button>`;
 }
 
 function renderRow(item, judge) {
@@ -223,6 +225,7 @@ const CLIENT_SCRIPT = String.raw`(function () {
     document.getElementById('rows-active').insertBefore(rowOf(panel), later ? rowOf(later) : null);
     sep.parentNode.insertBefore(tabOf(panel), later ? tabOf(later) : sep);
     tabOf(panel).classList.remove('done');
+    tabOf(panel).removeAttribute('aria-label');
   }
 
   // 枠の見出しは、判定の対象と完了済みが両方あるときだけ見せる

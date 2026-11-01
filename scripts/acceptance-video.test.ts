@@ -540,6 +540,24 @@ describe('gallery.mjs', () => {
     });
   });
 
+  test('完了済みのタブは aria-label で完了済みと伝わり、戻すと外れる', chromiumSkip, async () => {
+    await withDoneGallery([video, doneVideo(602), doneVideo(603)], async (page, open) => {
+      await open();
+      const label = (id: string) => page.locator(`#tab-${id}`).getAttribute('aria-label');
+      assert.equal(await label('574'), null);
+      assert.equal(await label('602'), '#602 完了済み');
+      assert.equal(await label('603'), '#603 完了済み');
+      await page.click('#tab-602');
+      await page.click('#panel-602 [data-return]');
+      assert.equal(await label('602'), null);
+      assert.equal(await label('603'), '#603 完了済み');
+      // 開き直しても、戻した状態に合わせる
+      await open();
+      assert.equal(await label('602'), null);
+      assert.equal(await label('603'), '#603 完了済み');
+    });
+  });
+
   test('戻すと、状況の要約も判定の対象の数に更新され、開き直しても同じ', chromiumSkip, async () => {
     await withDoneGallery([video, doneVideo(575), doneVideo(576)], async (page, open) => {
       await open();
