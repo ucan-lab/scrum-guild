@@ -20,6 +20,17 @@
   let createDialogOpen = $state(false);
 </script>
 
+<!-- 自分の組織を作る入口。入れる組織が無く、ほかに進む道が無い人だけ主ボタンにし、ほかは一覧や案内の下の静かな大きさにそろえる -->
+{#snippet createAction(primary: boolean)}
+  <button
+    class="btn"
+    class:is-primary={primary}
+    class:is-sm={!primary}
+    type="button"
+    onclick={(event) => createDialog?.show(event.currentTarget)}>{t('createMyOrganizationAction')}</button
+  >
+{/snippet}
+
 <svelte:head>
   <title>{t('pageTitle', { page: t('organizationChooseTitle'), app: t('appName') })}</title>
 </svelte:head>
@@ -50,27 +61,19 @@
           title={t('noOrganizationTitle')}
           text={t('noOrganizationSuspendedText', { organization: t('organization') })}
         >
-          {#snippet actions()}
-            <button class="btn is-primary" type="button" onclick={(event) => createDialog?.show(event.currentTarget)}
-              >{t('createMyOrganizationAction')}</button
-            >
-          {/snippet}
+          {#snippet actions()}{@render createAction(false)}{/snippet}
         </EmptyState>
       {:else}
-        <EmptyState icon="shield" title={t('noOrganizationTitle')} text={t('noOrganizationText')}>
-          {#snippet actions()}
-            <button class="btn is-primary" type="button" onclick={(event) => createDialog?.show(event.currentTarget)}
-              >{t('createMyOrganizationAction')}</button
-            >
-          {/snippet}
+        <EmptyState
+          icon="shield"
+          title={t('noOrganizationTitle')}
+          text={t('noOrganizationText', { organization: t('organization') })}
+        >
+          {#snippet actions()}{@render createAction(true)}{/snippet}
         </EmptyState>
       {/if}
       {#if data.organizations.length > 0 || data.invitations.length > 0}
-        <div class="form-actions">
-          <button class="btn is-sm" type="button" onclick={(event) => createDialog?.show(event.currentTarget)}
-            >{t('createMyOrganizationAction')}</button
-          >
-        </div>
+        <div class="form-actions">{@render createAction(false)}</div>
       {/if}
       <div class="form-actions">
         {#if data.operator}

@@ -97,6 +97,24 @@ export async function insertSelfCreatedOrganization(
   return { organizationId, db: orgDb(env, issueVerifiedOrganization(organizationId)) };
 }
 
+// insertSelfCreatedOrganization が挿入した組織の行を消す補償。最初の管理者を書けなかったときに、管理者のいない組織と
+// お試しの枠が残らないよう戻す。ID と作ったアカウントで絞るので、他の組織の行は消さない。
+// 組織の中の表の行が結んでいれば外部キーが断り、例外を投げる（行は残る）
+export async function deleteSelfCreatedOrganization(
+  env: Env,
+  input: { organizationId: string; accountId: string },
+): Promise<void> {
+  const common = commonDb(env);
+  await common.batch([
+    common.statement((q) =>
+      q
+        .deleteFrom('organizations')
+        .where('id', '=', input.organizationId)
+        .where('created_by_account_id', '=', input.accountId),
+    ),
+  ] as const);
+}
+
 // 言葉づかいの列（vocabulary）には VOCABULARY_COLUMN_VALUE を明示して入れる。
 // 人数と添付ファイルの上限、テーマは列の既定の値で作る。
 // slug が重なったときは 'slug_taken'（同時に作られて UNIQUE に当たった場合を含む）。それ以外の失敗は投げる

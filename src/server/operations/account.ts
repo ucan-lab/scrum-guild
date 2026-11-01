@@ -4,6 +4,7 @@
 import { accountLogins } from '../auth/account-logins.ts';
 import { isOperatorLogin, operatorLoginIdOf } from '../auth/operators.ts';
 import {
+  deleteSelfCreatedOrganization,
   insertSelfCreatedOrganization,
   listAccountOrganizations,
   type AccountOrganizations,
@@ -19,6 +20,8 @@ export type OutsideAccount = {
     name: string;
     now: Date;
   }): Promise<CreatedOrganization | 'slug_taken' | 'trial_limit'>;
+  // createOrganization で挿入した組織の行を消す補償（最初の管理者を書けなかったとき）。組織の中の表の行があれば外部キーが断り、投げる
+  abandonOrganization(organizationId: string): Promise<void>;
   // 入れる組織と、承諾待ちの招待だけがある組織（組織をまたいで読む関数を通す）。アカウントに結ばれる前の行は数えない
   organizations(): Promise<AccountOrganizations>;
   // シークレットの運用者の一覧に、このアカウントのログインが載っているか
@@ -35,6 +38,7 @@ export function outsideAccount(env: Env, accountId: string): OutsideAccount {
   let organizations: Promise<AccountOrganizations> | undefined;
   return {
     createOrganization: (input) => insertSelfCreatedOrganization(env, { ...input, accountId }),
+    abandonOrganization: (organizationId) => deleteSelfCreatedOrganization(env, { organizationId, accountId }),
     logins: loadLogins,
     organizations: () =>
       (organizations ??= (async () => listAccountOrganizations(env, { accountId, logins: await loadLogins() }))()),

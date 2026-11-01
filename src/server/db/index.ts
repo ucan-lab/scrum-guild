@@ -33,6 +33,7 @@ export {
   type OrganizationSummary,
 } from './enter-organization.ts';
 export {
+  deleteSelfCreatedOrganization,
   insertOrganization,
   insertSelfCreatedOrganization,
   SELF_SERVICE_CREATOR,
