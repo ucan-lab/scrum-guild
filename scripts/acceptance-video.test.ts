@@ -640,6 +640,14 @@ describe('gallery.mjs', () => {
       html,
       /<p class="hint">未判定も含めて、判定の対象の Issue が全部入る。完了済み（判定の対象に戻していないもの）は入らない。/,
     );
+    // done の無い manifest の説明には、完了済みの語を出さない（埋め込みのスクリプトは固定で語を含むので、説明の段落だけを見る）
+    const hint = (manifestHtml: string) => /<p class="hint">([^<]*)<\/p>/.exec(manifestHtml)?.[1] ?? '';
+    const plain: string = call('renderGallery', { judge: true, items: [video] });
+    assert.equal(
+      hint(plain),
+      '未判定も含めて、判定の対象の Issue が全部入る。未判定は、セッションが画面で 1 条件ずつ確かめる。',
+    );
+    assert.match(hint(html), /完了済み/);
     const text: string = call('buildResult', [
       { issue: 576, title: '済んだ', status: '', reasons: [], comment: '', done: true },
     ]);
