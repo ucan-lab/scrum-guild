@@ -540,6 +540,25 @@ describe('gallery.mjs', () => {
     });
   });
 
+  test(
+    '完了済みと判定の対象が manifest で混ざっても、戻した項目は manifest の順に入り、開き直しても同じ',
+    chromiumSkip,
+    async () => {
+      await withDoneGallery([doneVideo(601), video, doneVideo(603)], async (page, open) => {
+        await open();
+        await page.click('#tab-601');
+        await page.click('#panel-601 [data-return]');
+        const rows = await rowIds(page);
+        const bar = await barIds(page);
+        assert.deepEqual(rows, ['601', '574']);
+        assert.deepEqual(bar, ['tab-status', 'tab-601', 'tab-574', 'tabs-sep', 'tab-603']);
+        await open();
+        assert.deepEqual(await rowIds(page), rows);
+        assert.deepEqual(await barIds(page), bar);
+      });
+    },
+  );
+
   test('完了済みのタブは aria-label で完了済みと伝わり、戻すと外れる', chromiumSkip, async () => {
     await withDoneGallery([video, doneVideo(602), doneVideo(603)], async (page, open) => {
       await open();

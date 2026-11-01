@@ -217,8 +217,8 @@ const CLIENT_SCRIPT = String.raw`(function () {
   function rowOf(panel) { return document.querySelector('[data-goto="' + panel.getAttribute('data-issue') + '"]').parentNode; }
   function tabOf(panel) { return document.getElementById('tab-' + panel.getAttribute('data-issue')); }
 
-  // 戻したパネルの一覧の行とタブを、判定の対象の枠の中で manifest の順（issuePanels の順）の位置に入れる。
-  // 開き直したときの復元（manifest の順）と、戻した順に関わらず並びが同じになる
+  // 戻したパネルの一覧の行とタブを、判定の対象の枠の中に入れる。位置は manifest の順（issuePanels の順）で、
+  // 後ろにあって完了済みでない最初のパネルの前（無ければ枠の末尾）。復元（manifest の順に呼ぶ）と、戻した順に関わらず並びが同じになる
   function place(panel) {
     var later = issuePanels.slice(issuePanels.indexOf(panel) + 1).filter(function (p) { return !p.hasAttribute('data-done'); })[0];
     var sep = document.getElementById('tabs-sep');
