@@ -48,11 +48,7 @@ const screens: {
     path: '/aoba',
     ready: (page) => [
       page.getByRole('heading', { level: 1, name: '今日やること' }),
-      // /api/health を読み終えた後にだけ出る文
-      page
-        .getByRole('region', { name: 'API の疎通' })
-        .getByRole('status')
-        .filter({ hasText: /^API: / }),
+      page.getByRole('region', { name: '今日やると決めたもの' }),
     ],
   },
   {

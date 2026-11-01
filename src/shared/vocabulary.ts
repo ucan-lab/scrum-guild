@@ -781,19 +781,6 @@ export const dictionary = defineDictionary({
   operatorReassignRejected:
     '指名し直せませんでした。何も書かれていません。入力を確かめるか、少し待ってから、もう一度試してください。',
 
-  // API の疎通の表示（仮の画面）
-  apiHeading: 'API の疎通',
-  apiStatus: 'API: {status}（版 {version}）',
-  apiChecking: 'API を確かめています',
-  apiUnreachable: 'API に届きませんでした',
-  apiUnreachableStatus: 'API に届きませんでした（{status}）',
-  apiShowDetail: '詳細を見る',
-  apiRecheck: '確かめ直す',
-  apiRecheckOk: 'API を確かめました',
-  apiRecheckFailed: 'API に届きませんでした',
-  apiDetailTitle: 'API の詳細',
-  apiDetailBody: 'この画面が呼んだ API の応答です。',
-
   // アカウントのメニュー（組織の中の上の帯）とログアウト。{name} はログインしている人の名前
   accountMenuLabel: '{name}。アカウントのメニュー',
   logout: 'ログアウト',
@@ -1018,6 +1005,13 @@ export const dictionary = defineDictionary({
   consentSubmitHint: '利用規約とプライバシーポリシーを確認し、印を付けてください。',
   consentLoadFailed: '同意の状態を読み込めませんでした。もう一度試してください。',
   consentRecordFailed: '同意を記録できませんでした。もう一度試してください。',
+  // 前の版に同意した人が開いたときの「改めました」の案内（改めた文書の名前は termsTitle、privacyTitle、改定日は legalRevised を使う）。
+  // 履歴へのリンクの読み上げは「改定の履歴を見る （利用規約） 新しいタブで開きます」で、どの文書の履歴かを補う
+  consentRevisedTerms: '利用規約が改められました',
+  consentRevisedPrivacy: 'プライバシーポリシーが改められました',
+  consentRevisedBoth: '利用規約とプライバシーポリシーが改められました',
+  consentRevisedHistory: '改定の履歴を見る',
+  consentRevisedHistoryOf: '（{document}）',
 
   // テーマ
   themeLabel: 'テーマ',
