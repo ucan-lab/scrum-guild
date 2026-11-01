@@ -46,7 +46,7 @@ h1, h2, h3 { text-wrap: balance; }
   padding-left: max(var(--space-4), env(safe-area-inset-left, 0px));
   padding-right: var(--space-4);
   display: flex; flex-direction: column; gap: var(--space-5);
-  position: sticky; top: 0; height: 100vh; height: 100dvh; overflow-y: auto; scrollbar-width: thin;
+  position: sticky; top: 0; height: 100vh; height: 100dvh; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin;
 }
 .binding-foot { margin-top: auto; font-size: var(--text-xs); color: var(--color-faint); padding-inline: var(--space-2); }
 
@@ -57,7 +57,6 @@ h1, h2, h3 { text-wrap: balance; }
 .binding-head { display: flex; align-items: center; gap: var(--space-1); }
 .binding-head .brand { flex: 1 1 auto; min-width: 0; }
 .nav-toggle {
-  --nav-tip-half-trigger: 18px;
   position: relative; display: inline-grid; place-items: center; flex: none; width: 36px; height: 36px; padding: 0;
   border: 1px solid transparent; border-radius: var(--radius-1);
   background: transparent; color: var(--color-muted); cursor: pointer;
@@ -124,7 +123,7 @@ h1, h2, h3 { text-wrap: balance; }
 /* 狭い幅と、指で押す画面では、押す所を 44px 以上にする。左のメニューのロゴと項目（狭い幅では上の帯に並ぶ）も同じ */
 @media (max-width: 760px), (pointer: coarse) {
   :is(.org-menu-list, .ws-menu-list) a, :is(.org-menu-list, .ws-menu-list) button, .account-menu-list a, .account-menu-list button, .account-menu-button { min-height: 44px; }
-  .nav-toggle { --nav-tip-half-trigger: 22px; width: 44px; height: 44px; }
+  .nav-toggle { width: 44px; height: 44px; }
   .brand, .nav-item:not(.is-later) { min-height: 44px; }
 }
 
@@ -136,22 +135,20 @@ h1, h2, h3 { text-wrap: balance; }
   .binding-head .brand { padding-right: 0; }
   .nav-toggle:focus-visible .nav-tip { display: grid; }
   .nav-tip {
-    /* fixed は列のスクロール領域に切られない。flex/grid の中央の static position から、
-       札の半幅とボタンの半幅と余白だけ右へ動かし、元のボタンの右端に揃える。縦は中央のまま。 */
-    position: fixed; z-index: 1; transform: translateX(calc(50% + var(--nav-tip-half-trigger, 22px) + var(--space-3)));
+    position: absolute; z-index: 1; left: calc(100% + var(--space-3)); top: 50%; transform: translateY(-50%);
     width: max-content; max-width: 18rem; padding: var(--space-1) var(--space-2); border: 1px solid var(--color-line);
     border-radius: var(--radius-1); background: var(--color-surface); color: var(--color-fg);
     font-size: var(--text-sm); font-weight: 400; text-align: left; box-shadow: var(--shadow-float); pointer-events: none;
     overflow-wrap: anywhere;
   }
   .nav-tip small { color: var(--color-muted); }
-  /* 列は中で縦に送るので、浮かせた札は列のスクロールに追従させる（static position は送る前の位置に残る）。
-     アンカーで開閉のボタンの右・縦の中央に結ぶ。非対応のブラウザは上の static position のまま */
+  /* 列は中で縦に送るので、浮かせた札は列のスクロール領域に切られず、スクロールに追従させる。
+     fixed とアンカーはセットで当てる（fixed だけだと、送った量だけ元の位置に残る）。
+     アンカー位置指定に対応しないブラウザは、上の absolute のまま（列を送ると切られる） */
   @supports (anchor-name: --nav-hit) {
     .nav-toggle { anchor-name: --nav-hit; anchor-scope: --nav-hit; }
     .nav-tip {
-      position-anchor: --nav-hit; left: calc(anchor(right) + var(--space-3)); top: anchor(center);
-      transform: translateY(-50%);
+      position: fixed; position-anchor: --nav-hit; left: calc(anchor(right) + var(--space-3)); top: anchor(center);
     }
   }
 }
@@ -165,8 +162,7 @@ h1, h2, h3 { text-wrap: balance; }
   .app[data-nav-collapsed="true"] .org-menu-button:focus-visible .nav-tip { display: grid; }
   /* 項目の名前の札。開閉のボタンの札（.nav-tip）と同じ見た目 */
   .app[data-nav-collapsed="true"] .nav-item-label {
-    /* 44px の項目の中央の static position を使い、列の外でも切れずに右端へ揃える。 */
-    position: fixed; z-index: 1; transform: translateX(calc(50% + 22px + var(--space-3)));
+    position: absolute; z-index: 1; left: calc(100% + var(--space-3)); top: 50%; transform: translateY(-50%);
     width: max-content; max-width: 18rem; padding: var(--space-1) var(--space-2); border: 1px solid var(--color-line);
     border-radius: var(--radius-1); background: var(--color-surface); color: var(--color-fg);
     font-size: var(--text-sm); font-weight: 400; text-align: left; box-shadow: var(--shadow-float); pointer-events: none;
@@ -193,7 +189,7 @@ h1, h2, h3 { text-wrap: balance; }
   .app[data-nav-collapsed="true"] .nav-group-label {
     position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
   }
-  .app[data-nav-collapsed="true"] .nav-toggle { --nav-tip-half-trigger: 22px; width: 44px; height: 44px; }
+  .app[data-nav-collapsed="true"] .nav-toggle { width: 44px; height: 44px; }
   .app[data-nav-collapsed="true"] .nav-item,
   .app[data-nav-collapsed="true"] .org-menu-button { width: 44px; min-height: 44px; justify-content: center; }
   .app[data-nav-collapsed="true"] .nav-item { padding: 0; gap: 0; }
@@ -216,23 +212,23 @@ h1, h2, h3 { text-wrap: balance; }
     display: block; position: absolute; top: 7px; right: 7px; width: 8px; height: 8px;
     border-radius: 50%; border: 1px solid var(--color-stamp); background: var(--color-stamp); box-shadow: 0 0 0 2px var(--color-surface);
   }
+  .app[data-nav-collapsed="true"] .org-menu { position: relative; }
   .app[data-nav-collapsed="true"] .org-menu-list {
-    /* grid の static position はボタンの左上。列の外へずらし、スクロール領域に切られずに出す。 */
-    position: fixed; z-index: 1; margin-left: calc(44px + var(--space-3)); width: 15rem; max-width: min(18rem, 70vw);
+    position: absolute; z-index: 1; top: 0; left: calc(100% + var(--space-3)); width: 15rem; max-width: min(18rem, 70vw);
     box-shadow: var(--shadow-float);
   }
-  /* 項目の札と組織の一覧も、列のスクロールに追従するようアンカーで結ぶ（非対応のブラウザは上の static position のまま）。
-     一覧が画面の下に出るときは、ボタンの下端に揃えて上へ開く */
+  /* 項目の札、組織ボタンの札、組織の一覧も、fixed とアンカーをセットで当てて列のスクロールに追従させる
+     （非対応のブラウザは上の absolute のまま）。一覧が画面の下に出るときは、ボタンの下端に揃えて上へ開く */
   @supports (anchor-name: --nav-hit) {
     .app[data-nav-collapsed="true"] .nav-item { anchor-name: --nav-hit; anchor-scope: --nav-hit; }
     .app[data-nav-collapsed="true"] .nav-item-label {
-      position-anchor: --nav-hit; left: calc(anchor(right) + var(--space-3)); top: anchor(center);
-      transform: translateY(-50%);
+      position: fixed; position-anchor: --nav-hit; left: calc(anchor(right) + var(--space-3)); top: anchor(center);
     }
     .app[data-nav-collapsed="true"] .org-menu { anchor-scope: --org-hit; }
     .app[data-nav-collapsed="true"] .org-menu-button { anchor-name: --org-hit; }
+    .app[data-nav-collapsed="true"] .org-menu-button .nav-tip { position-anchor: --org-hit; }
     .app[data-nav-collapsed="true"] .org-menu-list {
-      position-anchor: --org-hit; left: calc(anchor(right) + var(--space-3)); top: anchor(top); margin-left: 0;
+      position: fixed; position-anchor: --org-hit; left: calc(anchor(right) + var(--space-3)); top: anchor(top);
       position-try-fallbacks: flip-block;
     }
   }

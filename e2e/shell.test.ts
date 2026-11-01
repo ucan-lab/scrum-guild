@@ -193,9 +193,10 @@ test.describe('高さの低い指で押す画面の左のメニュー', () => {
     await signIn(context, baseURL, 'admin');
   });
 
+  // overflows: 列が画面より長く、中で送る必要がある高さ（1024×600 は項目が収まる）
   for (const viewport of [
-    { width: 844, height: 390 },
-    { width: 1024, height: 600 },
+    { width: 844, height: 390, overflows: true },
+    { width: 1024, height: 600, overflows: false },
   ]) {
     test(`${viewport.width}×${viewport.height} の広げた列で、最後の項目とブランドの両方に届く`, async ({ page }) => {
       await page.setViewportSize(viewport);
@@ -210,7 +211,10 @@ test.describe('高さの低い指で押す画面の左のメニュー', () => {
       const last = page.locator('#app-nav .nav-item').last();
       await last.scrollIntoViewIfNeeded();
       await expect(last).toBeInViewport({ ratio: 1 });
-      await expect.poll(() => inner.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+      if (viewport.overflows) {
+        expect(await inner.evaluate((element) => element.scrollHeight - element.clientHeight)).toBeGreaterThan(0);
+        await expect.poll(() => inner.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+      }
       const href = await last.getAttribute('href');
       await last.click();
       await expect(page).toHaveURL(href!);
@@ -272,12 +276,24 @@ test.describe('高さの低い窓の畳んだ左のメニュー', () => {
       expect(labelBox.y).toBeGreaterThanOrEqual(0);
       expect(labelBox.y + labelBox.height).toBeLessThanOrEqual(viewport.height);
 
-      // 列を少しだけ送った状態で組織の一覧を開くと、一覧がボタンの横に揃い、画面の内側に収まる
+      // 列を少しだけ送った状態で、開閉のボタンと組織のボタンの札が、それぞれのボタンの右・縦の中央に揃う
       await inner.evaluate((element) => {
         element.scrollTop = 40;
       });
+      for (const button of [page.locator('.nav-toggle'), page.locator('.org-menu-button')]) {
+        await expect(button).toBeInViewport({ ratio: 1 });
+        await button.hover();
+        const tip = button.locator('.nav-tip');
+        await expect(tip).toBeVisible();
+        const buttonBox = await button.boundingBox();
+        const tipBox = await tip.boundingBox();
+        if (!buttonBox || !tipBox) throw new Error('ボタンと札の位置が取れない');
+        expect(tipBox.x).toBeCloseTo(buttonBox.x + buttonBox.width + 12, 0);
+        expect(tipBox.y + tipBox.height / 2).toBeCloseTo(buttonBox.y + buttonBox.height / 2, 0);
+      }
+
+      // その状態で組織の一覧を開くと、一覧がボタンの横に揃い、画面の内側に収まる
       const org = page.locator('.org-menu-button');
-      await expect(org).toBeInViewport({ ratio: 1 });
       await org.click();
       const list = page.getByRole('list', { name: '入れる組織' });
       await expect(list).toBeVisible();
@@ -312,6 +328,8 @@ test('左のメニューを送り切った後にホイールを回すと、本�
   await inner.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
   });
+  // この検査の前提: 列が溢れ（送り切れる）、本文も画面より長い
+  expect(await inner.evaluate((element) => element.scrollHeight - element.clientHeight)).toBeGreaterThan(0);
   expect(await page.evaluate(() => document.documentElement.scrollHeight > innerHeight)).toBe(true);
   await page.mouse.move(100, 150);
   await page.mouse.wheel(0, 400);
