@@ -352,7 +352,9 @@ Workers Logs で `job: "suspend-expired-trials"` のログを見る。
 - `level: "info"`: 止めた組織の件数（`suspended`）。止める組織が無い回は何も出ない
 - `level: "error"`（`code: "internal"`）: 組織は止まったが、その履歴を書けなかった。`organization_id` が組織の ID、`changes` が書こうとした履歴の `changes_json`、`at` が停止の日時、`error` が例外の名前。組織の停止は残り、ほかの組織の処理は続く。履歴は、このログの値から手で補う（`change_logs` に、`entity_type` が `organization`、`action` が `suspend`、`operator` と `actor_user_id` と `workspace_id` が空の行を足す）
 
-cron は、止める文が失敗すると例外で終わり、次の回（1時間後）で同じ条件の組織を止め直す。
+cron は、止める文が失敗すると例外で終わり、次の回（1時間後）で同じ条件の組織を止め直す。1回に止める組織は、期限の古い順に200件まで（`SUSPEND_EXPIRED_TRIALS_LIMIT`）で、残りは次の回に回る（履歴の書き込みが D1 の呼び出し数の上限に当たらないため）。
+
+この版から戻すと、戻し先のコードは `0 * * * *` の式を表に持たず、毎時 0 分に例外で失敗する。triggers は版と一緒に戻らないので、戻すときは「手元の準備」の手順で、戻し先の `wrangler.jsonc` の triggers を当て直す。
 
 ### 停止と再開
 

@@ -5,10 +5,15 @@
 // 組織の中の表は触らない（change_logs は別の batch() で、定期処理が appendScheduledChangeLog で書く）
 import { commonDb } from './entries.ts';
 
+// 1回に止める組織の上限。期限切れがたまっても、後の履歴の書き込み（組織ごとに D1 を1回呼ぶ）が D1 の呼び出し数の上限を超えない。
+// 残りは次の回（1時間後）に止める
+export const SUSPEND_EXPIRED_TRIALS_LIMIT = 200;
+
 export async function suspendExpiredTrials(
   env: Env,
   today: string,
   at: Date,
+  limit: number = SUSPEND_EXPIRED_TRIALS_LIMIT,
 ): Promise<readonly { id: string; trial_ends_on: string }[]> {
   const db = commonDb(env);
   const stamp = at.toISOString();
@@ -20,6 +25,17 @@ export async function suspendExpiredTrials(
         .where('suspended_at', 'is', null)
         .where('trial_ends_on', 'is not', null)
         .where('trial_ends_on', '<', today)
+        .where('id', 'in', (eb) =>
+          eb
+            .selectFrom('organizations')
+            .select('id')
+            .where('suspended_at', 'is', null)
+            .where('trial_ends_on', 'is not', null)
+            .where('trial_ends_on', '<', today)
+            .orderBy('trial_ends_on')
+            .orderBy('id')
+            .limit(limit),
+        )
         .returning(['id', 'trial_ends_on']),
     ),
   ]);
