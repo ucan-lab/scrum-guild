@@ -53,7 +53,7 @@
   if (first) Object.assign(D, freshData(first));
   try {
     const selected = new URLSearchParams(location.search).get("workspace");
-    if (selected && D.workspaces[selected]) D.workspace = selected;
+    if (selected && Object.hasOwn(D.workspaces, selected)) D.workspace = selected;
   } catch (e) { /* URL を読めない場合は既定の見本 */ }
 
   // ---- 言葉の辞書（各キーはスクラムの言葉の文字列1つ） ----
@@ -2047,7 +2047,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     const label = t("workspaceSwitchLabel").replace("{name}", name).replace("{workspace}", t("workspace"));
     const listLabel = t("workspaceSwitchListLabel").replace("{workspace}", t("workspace"));
     return `<div class="ws-menu"><button class="ws-menu-button" type="button" aria-expanded="${open}" aria-controls="${id}" aria-label="${esc(label)}" ${live ? "data-ws-menu" : ""}><span class="ws-menu-label">${t("workspace")}</span><b>${esc(name)}</b>${icon("chevron")}</button>
-      <ul class="ws-menu-list" id="${id}" aria-label="${esc(listLabel)}" ${open ? "" : "hidden"}>${workspaces.some((w) => w.id === current.id) ? "" : `<li class="ws-menu-current"><span>${esc(current.name)}</span></li>`}${workspaces.map((w) => `<li><a href="${firstHref("backlog.html")}${first ? "&" : "?"}workspace=${encodeURIComponent(w.id)}" ${live ? `data-ws-target="${esc(w.id)}"` : ""}${w.id === current.id ? ' aria-current="page"' : ""}><span class="org-menu-name">${esc(w.name)}</span>${w.id === current.id ? icon("check") : ""}</a></li>`).join("")}</ul></div>`;
+      <ul class="ws-menu-list" id="${id}" aria-label="${esc(listLabel)}" ${open ? "" : "hidden"}>${workspaces.some((w) => w.id === current.id) ? "" : `<li class="ws-menu-current"><span aria-current="page">${esc(current.name)}</span></li>`}${workspaces.map((w) => `<li><a href="${firstHref("backlog.html")}${first ? "&" : "?"}workspace=${encodeURIComponent(w.id)}" ${live ? `data-ws-target="${esc(w.id)}"` : ""}${w.id === current.id ? ' aria-current="page"' : ""}><span class="org-menu-name">${esc(w.name)}</span>${w.id === current.id ? icon("check") : ""}</a></li>`).join("")}</ul></div>`;
   }
   function setWorkspaceMenu(open, focus) {
     workspaceMenuOpen = open;
@@ -2285,7 +2285,11 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     const hit = (attr) => ev.target.closest(`[${attr}]`);
     let el;
     // 組織の切り替えを開閉する。外を押したら閉じる（押したものの動きは続ける）
-    if (hit("data-org-menu")) { setOrgMenu(!orgMenuOpen, true); return; }
+    if (hit("data-org-menu")) {
+      if (workspaceMenuOpen) setWorkspaceMenu(false);
+      setOrgMenu(!orgMenuOpen, true);
+      return;
+    }
     if (orgMenuOpen && ev.target.closest(".org-menu-list a, .org-menu-list button")) closeOrgMenu();
     else if (orgMenuOpen && !ev.target.closest(".org-menu")) closeOrgMenu();
     if (hit("data-ws-menu")) { setWorkspaceMenu(!workspaceMenuOpen, true); return; }

@@ -69,6 +69,16 @@ describe('組織とワークスペースの共通の開閉', () => {
     expect(menu.open).toBe(false);
   });
 
+  test('閉じているときの Esc と外側のクリックは何もしない', () => {
+    const { menu, outside, focus } = setup();
+    const event = key('Escape');
+    menu.onkeydown(event);
+    menu.onclick({ target: outside } as unknown as MouseEvent);
+    expect(menu.open).toBe(false);
+    expect(event.stopPropagation).not.toHaveBeenCalled();
+    expect(focus).not.toHaveBeenCalled();
+  });
+
   test('Tab で外へ移ったら閉じ、外のフォーカスを奪わない', () => {
     const { menu, inside, outside, doc, focus } = setup();
     menu.open = true;

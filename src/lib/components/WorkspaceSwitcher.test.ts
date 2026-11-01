@@ -48,7 +48,8 @@ describe('ワークスペースの切り替え', () => {
     expect(rows).toContain('class="ws-menu-current"');
     expect(rows).not.toContain('href="/sample/w/one"');
     expect(rows).toContain('href="/sample/w/two"');
-    expect(rows).not.toContain('aria-current');
+    expect(rows).toContain('<span aria-current="page">架空の開発チーム</span>');
+    expect(rows).not.toMatch(/<a [^>]*aria-current/);
     expect(rows).not.toContain('#i-check');
   });
 

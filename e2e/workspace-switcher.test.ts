@@ -63,12 +63,41 @@ test('一般のメンバーが別の所属先を選ぶと、終了したワー�
   await expect(destination).toHaveAttribute('href', target);
   await destination.click();
   await expect(page).toHaveURL(new RegExp(`${target}$`));
+  await expect(listOf(page)).toBeHidden();
+  await expect(buttonOf(page)).toHaveAttribute('aria-expanded', 'false');
   await expect(page.getByRole('heading', { level: 1, name: 'バックログ', exact: true })).toBeVisible();
   await expect(buttonOf(page)).toContainText(name);
   await expect(page.getByText(/に終了しました。読み取り専用です。/).first()).toBeVisible();
   await buttonOf(page).click();
   await expect(listOf(page).getByRole('link', { name, exact: true })).toHaveAttribute('aria-current', 'page');
   expect(await collect()).toEqual([]);
+});
+
+test('所属が複数の一覧で、矢印キーを押しただけでは移らず、開いたままフォーカスも動かない', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await signIn(context, baseURL, 'member');
+  await rewriteOperation(page, organizationInfo, { slug: 'aoba' }, (body) => ({
+    ...body,
+    workspaces: [
+      ...body.workspaces.filter((workspace) => workspace.id === workspaceId),
+      { id: '019a0000-0000-7000-8000-000000009001', name: '架空の切り替え先 A', role: 'member' as const },
+    ],
+  }));
+  await page.goto(backlog);
+  await buttonOf(page).focus();
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  const first = listOf(page).getByRole('link').first();
+  await expect(first).toBeFocused();
+  for (const key of ['ArrowDown', 'ArrowUp']) {
+    await page.keyboard.press(key);
+    await expect(first).toBeFocused();
+    await expect(listOf(page)).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`${backlog}$`));
+  }
 });
 
 test.describe('所属が1つの一般のメンバー', () => {

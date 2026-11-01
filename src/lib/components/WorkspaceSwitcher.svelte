@@ -46,7 +46,7 @@
   >
     {#if !isMember}
       <!-- 所属していない管理者が見ているものは、移動先の所属一覧に加えず、名前だけ先頭に出す。 -->
-      <li class="ws-menu-current"><span>{currentWorkspace.name}</span></li>
+      <li class="ws-menu-current"><span aria-current="page">{currentWorkspace.name}</span></li>
     {/if}
     {#each workspaces as workspace (workspace.id)}
       {@const current = workspace.id === currentWorkspace.id}
