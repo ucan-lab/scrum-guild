@@ -66,7 +66,7 @@
     doneToday: "今日の完了", complete: "完了にする", requester: "作成者", party: "参加者", accept: "参加する", leave: "参加をやめる",
     historyCreated: "作成した", historyUpdated: "変更した", reward: "クリア報酬", clear: "エピックを完了にする", create: "起票", leader: "リーダー",
     member: "メンバー", dod: "完成の定義", organization: "組織", admin: "管理者", assistant: "アシスタント",
-    epicPageRequest: "概要", epicPagePartyEmpty: "参加者はまだいません。", accountMenuLabel: "{name}。アカウントのメニュー", logout: "ログアウト",
+    epicPageRequest: "概要", epicPagePartyEmpty: "参加者はまだいません。", accountMenuLabel: "{name}。アカウントのメニュー", pageMe: "マイプロフィール", pageOrgAdmin: "組織の管理", navInvitationsBadge: "招待 {count}", navInvitationsLabel: "、届いた招待 {count}件", logout: "ログアウト",
     logoutMoving: "ログアウトしています", loggedOut: "ログアウトしました。", logoutFailed: "ログアウトできませんでした。時間をおいてもう一度試してください。",
     markdownPlainNote: "整形せずに表示しています", markdownNewTab: "新しいタブで開きます", markdownCodeRegion: "コード",
     termsTitle: "利用規約", privacyTitle: "プライバシーポリシー", retry: "もう一度試す", retrying: "読み込んでいます",
@@ -343,7 +343,7 @@
     ],
   };
   const FIRST_HINT = {
-    member: () => `1日の時間は8時間、稼働する曜日は月〜金として${t("capacity")}を数えます。違うときは<a href="me.html">自分の設定</a>で変えます。`,
+    member: () => `1日の時間は8時間、稼働する曜日は月〜金として${t("capacity")}を数えます。違うときは<a href="me.html">マイプロフィール</a>で変えます。`,
     leader: () => `${t("column")}、${t("detail")}の決まった欄は、作ったときの既定のままです。変えるときは<a href="${firstHref("settings.html")}">設定</a>で変えます。`,
     admin: () => "",
   };
@@ -1411,7 +1411,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
         `<button class="btn is-primary" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" data-close-dialog data-toast="${t("sprint")}を削除しました">削除する</button>`);
       document.querySelector(".dialog-sheet").classList.add("is-danger");
     },
-    // API トークンを発行した直後（本番は ApiTokensSetting の Dialog）。自分の設定の「発行する」から開く。
+    // API トークンを発行した直後（本番は ApiTokensSetting の Dialog）。マイプロフィールの「発行する」から開く。
     // 生の値はこのダイアログの中にだけ出し、閉じると二度と出せない。値は固定の架空の値
     tokenIssued: () => {
       openDialog("API トークンを発行しました",
@@ -1423,7 +1423,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
          <p class="field-hint">2027/01/29 09:00 まで使えます。</p>`,
         `<button class="btn is-primary" type="button" data-close-dialog>閉じる</button>`, true);
     },
-    // API トークンの取消の確認（本番は ConfirmDialog）。自分の設定の一覧の「取り消す」から開く。取り消せない旨を書く
+    // API トークンの取消の確認（本番は ConfirmDialog）。マイプロフィールの一覧の「取り消す」から開く。取り消せない旨を書く
     tokenRevoke: () => {
       openDialog("API トークン「手元の CLI」を取り消しますか",
         `<p>取り消すと、このトークンはすぐ使えなくなります。元に戻せません。使っている CLI や MCP は、新しく発行したトークンに替えてください。</p>`,
@@ -1730,6 +1730,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
   function assistContext() {
     if (drawer.id) return `${t("task")}「${esc(task(drawer.id).title)}」`;
     if (!page) return esc(Object.values(D.workspaces)[0]?.name || "");
+    if (["me", "admin"].includes(page.current)) return t(page.current === "me" ? "pageMe" : "pageOrgAdmin");
     if (page.current === "sprint" && D.sprints.sp14) return esc(sprintLabel("sp14"));
     const p = PAGES.find((x) => Array.isArray(x) && x[0] === page.current);
     const inWs = PAGES.indexOf(p) > PAGES.indexOf("workspace");
@@ -1967,8 +1968,6 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     "organization",
     ["today", "sun", () => "今日やること", "today.html"],
     ["notifications", "bell", () => "通知", "notifications.html", 3],
-    ["me", "users", () => "自分の設定", "me.html", () => (D.receivedInvites || []).length],
-    ["admin", "shield", () => "組織の管理", "admin.html"],
     "workspace",
     ["inbox", "inbox", () => t("inbox"), "inbox.html", 4],
     ["backlog", "board", () => t("backlog"), "backlog.html"],
@@ -1999,12 +1998,6 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
         ${["today", "notifications", "me", "admin", "operator"].includes(current) ? "" : `<div id="ws-menu-slot">${workspaceMenuHtml()}</div>`}`;
       if (typeof p === "string") return `<div class="nav-group"><span class="nav-group-label">${p}</span></div>`;
       const [id, ic, label, href, badge] = p;
-      // 自分の設定の件数は、届いた招待の数（関数で渡す）。畳んだ列では件数を隠し、点（.nav-item-invite）を項目の角に出す。読み上げには件数を足す
-      if (typeof badge === "function") {
-        const n = badge();
-        const note = n > 0 && !first ? `<span class="nav-badge" aria-hidden="true">招待 ${n}</span><span class="nav-item-invite" aria-hidden="true"></span><span class="visually-hidden">、届いた招待 ${n}件</span>` : "";
-        return `<a class="nav-item" href="${firstHref(href)}" ${current === id ? 'aria-current="page"' : ""}>${icon(ic)}<span class="nav-item-label">${label()}</span>${note}</a>`;
-      }
       return `<a class="nav-item" href="${firstHref(href)}" ${current === id ? 'aria-current="page"' : ""}>${icon(ic)}<span class="nav-item-label">${label()}</span>${badge && !first ? `<span class="nav-badge">${badge}</span>` : ""}</a>`;
     }).join("");
   }
@@ -2062,22 +2055,24 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     const next = ev.relatedTarget;
     if (workspaceMenuOpen && next && !next.closest(".ws-menu")) setWorkspaceMenu(false);
   });
-  // アカウントのメニュー。上の帯の自分の名前を押すと開き、中は「ログアウト」の1項目（後で「自分の設定」も入る）。
+  // アカウントのメニュー。上の帯の自分の名前を押すと開き、中は「マイプロフィール」、管理者だけ「組織の管理」、最後に「ログアウト」。
   // 開閉は組織の切り替えと同じ: ボタン、外を押す、Tab で外へ出る、Esc。メニューの中にフォーカスがあるときに閉じたら、ボタンへ戻す。
   // 見本ではログアウトせず、トーストだけを出す。運用者の枠も同じメニュー（本番の /operator は紙の下のボタン）
   let accountMenuOpen = false;
   // busy は、ログアウトを押して結果を待っている間（項目を aria-disabled にして文言を替え、読み上げの領域に伝える）。
   // admin は管理者の印を出し、読み上げの名前にも含める
-  function accountMenuHtml({ open = accountMenuOpen, id = "account-menu-list", live = true, operator = page && page.operator, busy = false, admin = false } = {}) {
+  function accountMenuHtml({ open = accountMenuOpen, id = "account-menu-list", live = true, operator = page && page.operator, busy = false, admin = !!D.organizations.find((org) => org.slug === D.organization)?.admin, invitationCount = (D.receivedInvites || []).length } = {}) {
     const name = operator ? D.operator.name : user(D.me).name;
     const badge = operator ? "運用者" : admin ? t("admin") : "";
     const who = operator
       ? `${avatar(D.operator.name, 0)}${esc(name)}<span class="chip">運用者</span>`
       : `${avatarOf(D.me)}${esc(name)}${admin ? `<span class="chip">${t("admin")}</span>` : ""}${emblem(user(D.me).level, true)}`;
     const label = t("accountMenuLabel").replace("{name}", badge ? `${name}（${badge}）` : name);
-    return `<div class="account-menu"><button class="account-menu-button" type="button" aria-expanded="${open}" aria-controls="${id}" aria-label="${esc(label)}" ${live ? "data-account-menu" : ""}><span class="me">${who}</span>${icon("chevron")}</button>
+    const count = operator ? 0 : invitationCount;
+    const items = operator ? "" : `<li><a href="${firstHref("me.html")}" ${page && page.current === "me" ? 'aria-current="page"' : ""} ${live ? "data-account-link" : ""}><span class="org-menu-name">${t("pageMe")}</span>${count > 0 ? `<span class="account-menu-badge" aria-hidden="true">${t("navInvitationsBadge").replace("{count}", count)}</span><span class="visually-hidden">${t("navInvitationsLabel").replace("{count}", count)}</span>` : ""}</a></li>${admin ? `<li><a href="${firstHref("admin.html")}" ${page && page.current === "admin" ? 'aria-current="page"' : ""} ${live ? "data-account-link" : ""}>${t("pageOrgAdmin")}</a></li>` : ""}`;
+    return `<div class="account-menu"><button class="account-menu-button" type="button" aria-expanded="${open}" aria-controls="${id}" aria-label="${esc(label)}" ${live ? "data-account-menu" : ""}><span class="me">${who}</span>${count > 0 ? '<span class="account-menu-invite" aria-hidden="true"></span>' : ""}${icon("chevron")}</button>
       <span class="visually-hidden" role="status">${busy ? t("logoutMoving") : ""}</span>
-      <ul class="account-menu-list" id="${id}" aria-label="${esc(label)}" ${open ? "" : "hidden"}><li><button type="button" ${busy ? 'aria-disabled="true"' : ""} ${live ? 'data-toast="見本のため、ログアウトしません"' : ""}><span class="org-menu-name">${busy ? t("logoutMoving") : t("logout")}</span></button></li></ul></div>`;
+      <ul class="account-menu-list" id="${id}" aria-label="${esc(label)}" ${open ? "" : "hidden"}>${items}<li><button type="button" ${busy ? 'aria-disabled="true"' : ""} ${live ? 'data-toast="見本のため、ログアウトしません"' : ""}><span class="org-menu-name">${busy ? t("logoutMoving") : t("logout")}</span></button></li></ul></div>`;
   }
   function setAccountMenu(open, focus) {
     accountMenuOpen = open;
@@ -2098,7 +2093,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
   function cycleFirst() {
     const order = [null, ...FIRST_ROLES];
     const next = order[(order.indexOf(first) + 1) % order.length];
-    const here = (PAGES.find((p) => Array.isArray(p) && p[0] === page.current) || [])[3] || "today.html";
+    const here = ["me", "admin"].includes(page.current) ? `${page.current}.html` : (PAGES.find((p) => Array.isArray(p) && p[0] === page.current) || [])[3] || "today.html";
     const target = !next || FIRST_PAGES[next].includes(here) ? here : "today.html";
     location.href = firstHref(target, next);
   }
@@ -2298,6 +2293,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       closeWorkspaceMenu();
     } else if (workspaceMenuOpen && !ev.target.closest(".ws-menu")) closeWorkspaceMenu();
     // アカウントのメニューも同じ。ただしログアウトの項目を押しても閉じない（本番は待ちの表示を見せるため）
+    if (hit("data-account-link")) { closeAccountMenu(); return; }
     if (hit("data-account-menu")) { setAccountMenu(!accountMenuOpen, true); return; }
     if (accountMenuOpen && !ev.target.closest(".account-menu")) closeAccountMenu();
     if ((el = hit("data-sun"))) {

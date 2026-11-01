@@ -21,7 +21,8 @@ test.describe('管理者（あおば開発のミナト）', () => {
   test('組織の管理に、既存のワークスペースの一覧を出し、メニューに組織の管理が入る', async ({ page }) => {
     const collect = await watchViolations(page);
     await page.goto('/aoba');
-    await page.locator('.nav-item', { hasText: '組織の管理' }).click();
+    await page.getByRole('button', { name: /アカウントのメニュー$/ }).click();
+    await page.locator('.account-menu-list').getByRole('link', { name: '組織の管理', exact: true }).click();
     await expect(page).toHaveURL(/\/aoba\/admin$/);
     await expect(page.getByRole('heading', { level: 1, name: '組織の管理' })).toBeVisible();
     // 見出しにフォーカスを置くのはワークスペースの画面だけ。ほかの画面の見出しは、フォーカスを受けない
@@ -107,7 +108,8 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(page.locator('.topbar .chip').first()).toHaveText('所属せず管理者として開いています');
 
     // 画面を読み直さずにワークスペースの外へ移ると、印が消える
-    await page.locator('.nav-item', { hasText: '組織の管理' }).click();
+    await page.getByRole('button', { name: /アカウントのメニュー$/ }).click();
+    await page.locator('.account-menu-list').getByRole('link', { name: '組織の管理', exact: true }).click();
     await expect(page).toHaveURL(/\/aoba\/admin$/);
     await expect(page.getByRole('button', { name: 'ワークスペースを作る' }).first()).toBeVisible();
     await expect(page.locator('.topbar .chip')).toHaveCount(1);
@@ -198,7 +200,8 @@ test.describe('管理者（あおば開発のミナト）', () => {
       await route.continue();
     });
     await page.goto('/aoba');
-    await page.locator('.nav-item', { hasText: '組織の管理' }).click();
+    await page.getByRole('button', { name: /アカウントのメニュー$/ }).click();
+    await page.locator('.account-menu-list').getByRole('link', { name: '組織の管理', exact: true }).click();
     await expect(page).toHaveURL(/\/aoba\/admin$/);
     await page.getByRole('button', { name: 'ワークスペースを作る' }).first().click();
     const dialog = page.getByRole('dialog', { name: 'ワークスペースを作る' });
@@ -415,7 +418,8 @@ test.describe('一般のユーザー（あおば開発のハルカ）', () => {
   test('メニューに組織の管理が出ず、/aoba/admin は「見つからない」', async ({ page }) => {
     await page.goto('/aoba');
     await expect(page.getByRole('heading', { level: 1, name: '今日やること' })).toBeVisible();
-    await expect(page.locator('.nav-item', { hasText: '組織の管理' })).toHaveCount(0);
+    await page.getByRole('button', { name: /アカウントのメニュー$/ }).click();
+    await expect(page.locator('.account-menu-list').getByRole('link', { name: '組織の管理' })).toHaveCount(0);
 
     await page.goto('/aoba/admin');
     await expect(page.getByRole('heading', { level: 1, name: '画面が見つかりません' })).toBeVisible();

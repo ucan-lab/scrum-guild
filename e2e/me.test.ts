@@ -1,4 +1,4 @@
-// 自分の設定の画面の経験値の節と、バックログの画面のチーム全体の経験値。seed のセッション（seed/sessions.ts）の Cookie で開く。
+// マイプロフィールの画面の経験値の節と、バックログの画面のチーム全体の経験値。seed のセッション（seed/sessions.ts）の Cookie で開く。
 // あおば開発のミナトは、完了したタスクの起票と完了の明細2行（seed/data.sql）。ひばり工房のミナト（同じアカウント）は、
 // 完了と打ち消しをくり返した明細 52 行（合計 0）で、「続きを読む」を確かめる。
 // ほかのファイルの e2e がタスクを完了にすると、あおば開発のミナトの明細とレベルは増えうるので、数は ひばり工房で確かめる
@@ -7,7 +7,7 @@ import { signIn, watchViolations } from './helpers.ts';
 
 const AOBA_WORKSPACE_ID = '019a0000-0000-7000-8000-000000000401';
 
-test.describe('自分の設定（ミナト）', () => {
+test.describe('マイプロフィール（ミナト）', () => {
   test.beforeEach(async ({ context, baseURL }) => {
     await signIn(context, baseURL, 'admin');
   });
@@ -29,15 +29,16 @@ test.describe('自分の設定（ミナト）', () => {
     expect(await animations()).toMatchObject({ got: 'none', tip: 'none' });
   });
 
-  test('メニューの「自分の設定」から開くと、レベルの面と経験値の明細が出る', async ({ page }) => {
+  test('メニューの「マイプロフィール」から開くと、レベルの面と経験値の明細が出る', async ({ page }) => {
     const collect = await watchViolations(page);
     await page.goto('/aoba');
-    await page.locator('.nav-item', { hasText: '自分の設定' }).click();
+    await page.getByRole('button', { name: /アカウントのメニュー$/ }).click();
+    await page.locator('.account-menu-list').getByRole('link', { name: 'マイプロフィール', exact: true }).click();
     await expect(page).toHaveURL(/\/aoba\/me$/);
-    await expect(page.getByRole('heading', { level: 1, name: '自分の設定' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'マイプロフィール' })).toBeVisible();
     await expect(page.locator('.page-eyebrow')).toHaveText('ミナト');
-    await expect(page.locator('.nav-item[aria-current="page"]')).toHaveText('自分の設定');
-    await expect(page).toHaveTitle('自分の設定 - Scrum Guild');
+    await expect(page.locator('.account-menu-list a[aria-current="page"]')).toHaveText('マイプロフィール');
+    await expect(page).toHaveTitle('マイプロフィール - Scrum Guild');
 
     // レベルの面。紋章（大）、合計、次のレベルまでと見込み、ゲージ、凡例、ワークスペースごとの内訳
     const panel = page.getByRole('region', { name: 'レベル' });
@@ -174,7 +175,7 @@ test.describe('自分の設定（ミナト）', () => {
       );
     }
     await page.goto('/hibari/me');
-    await expect(page.getByRole('heading', { level: 1, name: '自分の設定' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'マイプロフィール' })).toBeVisible();
     await expect(page.getByText('今は経験値、API トークン、テーマ、届いた招待を扱えます。')).toBeVisible();
     await expect(page.getByText('レベルを読み込めませんでした')).toBeVisible();
     await expect(page.getByText('経験値の明細を読み込めませんでした')).toBeVisible();

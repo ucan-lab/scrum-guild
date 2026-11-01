@@ -1,4 +1,4 @@
-// 自分の設定の「API トークン」の節（ApiTokensSetting.svelte）を svelte/server で HTML にして、初期の描画だけを確かめる。
+// マイプロフィールの「API トークン」の節（ApiTokensSetting.svelte）を svelte/server で HTML にして、初期の描画だけを確かめる。
 // 入力の解釈（problem()）と発行・取消の流れはコンポーネントの中の状態で、純粋な関数に切れていないので、ここでは扱わない（e2e/api-tokens.test.ts）
 import { render } from 'svelte/server';
 import { expect, test, vi } from 'vitest';

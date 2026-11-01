@@ -6,7 +6,7 @@ import { tokenList } from '../../../shared/operations/session/index.ts';
 import { invitationList } from '../../../shared/operations/workspace/index.ts';
 import type { PageLoad } from './$types';
 
-// 自分の設定の画面が使う値。経験値、API トークン、届いた招待の節の値で、テーマの節は組織の枠が読んだ値（organization の操作の結果）を使う。
+// マイプロフィールの画面が使う値。経験値、API トークン、届いた招待の節の値で、テーマの節は組織の枠が読んだ値（organization の操作の結果）を使う。
 // 1日の基準、稼働期間、休み、月の基準の上書き、積載量の合計の節は #66 で足す。
 // レベルの面（summary）と明細の最初の 50 件（grants）と API トークンの一覧（tokens）と、この組織の届いた招待（invitations）を並べて読み、
 // 読めなかったものだけを null にする（画面は、その節にだけ失敗を出し、「もう一度試す」はその節の操作だけを画面から呼び直す）。

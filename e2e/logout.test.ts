@@ -101,6 +101,10 @@ test.describe('組織の中（アカウントのメニュー）', () => {
       // メニューの中にフォーカスがあるときの Esc は、ボタンへ戻す
       await page.keyboard.press('Enter');
       await page.keyboard.press('Tab');
+      await expect(page.locator('.account-menu-list a').first()).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(page.locator('.account-menu-list a').last()).toBeFocused();
+      await page.keyboard.press('Tab');
       await expect(logoutItem(page)).toBeFocused();
       await page.keyboard.press('Escape');
       await expect(button).toHaveAttribute('aria-expanded', 'false');
@@ -114,6 +118,10 @@ test.describe('組織の中（アカウントのメニュー）', () => {
 
       // Tab でメニューの外へ出ると閉じる
       await button.click();
+      await page.keyboard.press('Tab');
+      await expect(page.locator('.account-menu-list a').first()).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(page.locator('.account-menu-list a').last()).toBeFocused();
       await page.keyboard.press('Tab');
       await expect(logoutItem(page)).toBeFocused();
       await page.keyboard.press('Tab');

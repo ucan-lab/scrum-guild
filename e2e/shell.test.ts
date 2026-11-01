@@ -345,7 +345,7 @@ test('覚えた値が壊れていても、落ちずに描く', async ({ page }) 
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'simple');
 });
 
-// ダイアログとトーストの部品の確かめは、自分の設定（/aoba/me）の API トークンの節を使う（#686）。
+// ダイアログとトーストの部品の確かめは、マイプロフィール（/aoba/me）の API トークンの節を使う（#686）。
 // 取り消しの確認のダイアログ（seed のトークンの行から開く。やめるだけで、取り消さない）で開閉とフォーカスを、
 // 発行の直後のダイアログ（発行の応答を差し替えるので、DB には何も書かない）でトーストを確かめる
 const me = '/aoba/me';
@@ -379,7 +379,7 @@ async function openIssuedDialog(page: Page, token = `sgp_${'A'.repeat(43)}`, nam
   return dialog;
 }
 
-test.describe('ダイアログとトースト（自分の設定の API トークンの節）', () => {
+test.describe('ダイアログとトースト（マイプロフィールの API トークンの節）', () => {
   test.beforeEach(async ({ context, baseURL }) => {
     await signIn(context, baseURL, 'admin');
   });
@@ -438,7 +438,7 @@ test.describe('ダイアログとトースト（自分の設定の API トーク
   });
 });
 
-test.describe('トースト（自分の設定の API トークンの節。発行の応答を差し替える）', () => {
+test.describe('トースト（マイプロフィールの API トークンの節。発行の応答を差し替える）', () => {
   test.beforeEach(async ({ context, baseURL }) => {
     await signIn(context, baseURL, 'admin');
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
@@ -658,7 +658,7 @@ test('4000px の幅でも、組織の管理の欄は 56rem で止まり、表は
   for (const width of fieldWidths) expect(width).toBeLessThanOrEqual(FORM_MAX_PX);
 });
 
-test('4000px の幅でも、自分の設定の API トークンの発行の欄は 56rem で止まる', async ({ page }) => {
+test('4000px の幅でも、マイプロフィールの API トークンの発行の欄は 56rem で止まる', async ({ page }) => {
   await page.setViewportSize(WIDE_VIEWPORT);
   await page.goto('/aoba/me');
 
