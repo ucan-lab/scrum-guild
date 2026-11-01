@@ -4,6 +4,7 @@
   import { resolve } from '$app/paths';
   import { callOperation, type ApiResult } from '../../lib/api.ts';
   import EmptyState from '../../lib/components/EmptyState.svelte';
+  import FirstSteps from '../../lib/components/FirstSteps.svelte';
   import Icon from '../../lib/components/Icon.svelte';
   import LevelPanel from '../../lib/components/LevelPanel.svelte';
   import LoadFailed from '../../lib/components/LoadFailed.svelte';
@@ -309,6 +310,16 @@
 {/snippet}
 
 {#snippet main()}
+  <!-- 最初にやること。手順が空（必須が済んだ、出す手順が無い）か読めなかったときは置かない -->
+  {#if data.firstSteps !== null && data.firstSteps.role !== null && data.firstSteps.steps.length > 0 && (data.firstSteps.role !== 'admin' || data.organization?.me.is_admin)}
+    <FirstSteps
+      slug={data.slug}
+      role={data.firstSteps.role}
+      steps={data.firstSteps.steps}
+      organizationName={data.organization?.organization.name ?? ''}
+      onCreateWorkspace={data.organization?.me.is_admin ? (opener) => createDialog?.show(opener) : undefined}
+    />
+  {/if}
   {#if data.today !== null && data.today.sprint_goals.length > 0}
     <div class="notice-grid">
       {#each data.today.sprint_goals as sprint (sprint.workspace_id)}
