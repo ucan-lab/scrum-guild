@@ -283,6 +283,8 @@
 | trial_ends_on | TEXT | `CHECK (trial_ends_on IS date(trial_ends_on))` | 会員が作ったお試しの期限（UTC の日付）。運用者が作る組織は空。期限の翌日（UTC）に入ってから、定期処理（毎時 0 分）が停止していない組織を一時的な停止にする（当日までは止めない）。運用者が再開したら空にして、お試しを終える（以後は止まらない）。停止では変えず、期限を過ぎて止まった組織の期限は再開まで残る（「書き込みの単位」の定期処理による停止と、組織の停止と再開） |
 | created_at、updated_at | TEXT | NOT NULL | |
 
+- `organization` の応答は、管理者で `trial_ends_on` があるときだけ `trial: { ends_on, days_left }` を返す。`ends_on` は期限の日付、`days_left` は期限の UTC の日付から `now()` の UTC の日付を引いた整数（当日は0、過ぎていれば負の値）。メンバーと期限の無い組織には `trial: null` を返す。期限は共通の入口で組織に入るときに読み、組織の中の表との結合や batch には混ぜない。
+- `list-organizations` の各行は `trial_ends_on: string | null` と `trial_expired: boolean` を返す。`trial_expired` は期限があり、その日付が `now()` の UTC の日付より前のときだけ真（当日は偽）。停止中も期限があれば返す。
 - 運用者の画面、または会員の画面で作る。会員が作るときは作成者を `created_by_account_id` に記録し、UTC の作成日の30日後を `trial_ends_on` に記録する。会員が作るお試し中の組織は、同じ `created_by_account_id` で `trial_ends_on IS NOT NULL` の行が無い場合だけ INSERT する。最初の管理者の `users` と `change_logs` は組織の DB の別の batch() で入れる。
 - `created_by_account_id` には、外部キーの検査に使う部分索引（`created_by_account_id IS NOT NULL`）を持つ。
 - アプリが使う名前（`api`、`login`、`signup`、`operator`、`terms`、`privacy` など）を slug にできないことは、アプリが検査する。`consent` は、規約への同意の画面（`/consent`）の経路で、予約している。予約した名前の一覧は `src/shared/organization-slug.ts` に持ち、画面の最上段のルートを足したら合わせて足す（`scripts/organization-slug.test.ts` が照合する）。

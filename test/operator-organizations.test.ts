@@ -589,6 +589,8 @@ describe('組織の一覧', () => {
       attachment_quota_bytes: 32212254720,
       last_used_at: null,
       self_created: false,
+      trial_ends_on: null,
+      trial_expired: false,
     });
   });
 
@@ -845,6 +847,8 @@ describe('組織ごとの集計', () => {
       'slug',
       'suspended_at',
       'task_count',
+      'trial_ends_on',
+      'trial_expired',
       'workspace_count',
     ]);
   });
