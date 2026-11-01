@@ -181,7 +181,8 @@ export const firstStepsOperation = implement(firstSteps, async ({ db, actor }) =
     // 複数のワークスペースのリーダーなら、どれか1つで済んでいれば済み。済んでいない手順は、どのワークスペースでも未完なので、
     // 名前順で先頭のワークスペースを指す
     done.set('invite_members', pendingResult.rows.length > 0 || othersResult.rows.length > 0);
-    done.set('first_backlog_task', hasBacklogTask);
+    // バックログにタスクがあれば上で空を返しているので、ここに届くときの first_backlog_task は常に未完
+    done.set('first_backlog_task', false);
     done.set('start_sprint', sprintResult.rows.length > 0);
     for (const key of ['invite_members', 'first_backlog_task', 'start_sprint'] as const) target.set(key, leaderOf[0]!);
     done.set('became_leader', true);
