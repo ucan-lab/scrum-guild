@@ -5,7 +5,8 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
 import { taskFieldSet } from '../src/shared/operations/task/task-field-set.ts';
 import { createWorkspace, signIn, watchViolations } from './helpers.ts';
-import { failOperation } from './operations.ts';
+import { taskDetail } from '../src/shared/operations/task/task-detail.ts';
+import { failOperation, rewriteOperation } from './operations.ts';
 
 const AOBA = { slug: 'aoba' };
 
@@ -120,6 +121,30 @@ test('設定で欄を足す → 起票した行と見出しに未記入 → 引�
   await expect(unfilledTally(page)).toHaveText(/詳細 未記入\s*1/);
   // 「同じ名前は断る」で起こした 409 だけが、ブラウザのコンソールに残る
   expect(await collect()).toEqual(['Failed to load resource: the server responded with a status of 409 (Conflict)']);
+});
+
+test('バックログでない（受信箱とアーカイブの）タスクの引き出しは、値が無い欄に「未記入」の印を出さず、バックログなら出す', async ({
+  page,
+}) => {
+  await createWorkspace(page, '印の範囲ワークスペース');
+  await addTask(page, '範囲を確かめる');
+  const open = async () => {
+    await page.locator('.entry', { hasText: '範囲を確かめる' }).getByRole('link', { name: '範囲を確かめる' }).click();
+    return page.getByRole('dialog', { name: '範囲を確かめる' });
+  };
+
+  // バックログのタスクは、値の無い欄に印が出る
+  const inBacklog = await open();
+  await expect(inBacklog.locator('[data-field-id]')).toHaveCount(1);
+  await expect(inBacklog.locator('[data-field-id] .chip.is-todo')).toHaveCount(1);
+  await inBacklog.getByRole('button', { name: '閉じる' }).click();
+  await expect(inBacklog).toBeHidden();
+
+  // 受信箱（バックログでない）として返すと、欄は出るが印は出ない。木の行と件数と同じ範囲にそろえている
+  await rewriteOperation(page, taskDetail, AOBA, (output) => ({ ...output, in_backlog: false, unfilled: false }));
+  const outside = await open();
+  await expect(outside.locator('[data-field-id]')).toHaveCount(1);
+  await expect(outside.locator('[data-field-id] .chip.is-todo')).toHaveCount(0);
 });
 
 test('同時に直されて断られると、書きかけを残したまま読み直しを促し、読み直した値で書き直せる', async ({ page }) => {
