@@ -391,27 +391,35 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(dialog.getByText('選べる人を読み込めませんでした')).toHaveCount(1);
   });
 
-  test('作れたのに組織の枠の読み直しが失敗しても、完了の表示は出す（読み直しの結果を待たない）', async ({ page }) => {
+  test('完了の表示の間は組織の枠を読み直さず（失敗して選べなくなるのを避ける）、閉じた後に読み直す', async ({
+    page,
+  }) => {
     let created = false;
+    let organizationReads = 0;
     await page.route('**/api/aoba/workspace-create', async (route) => {
       await route.continue();
       created = true;
     });
-    // 作った後の組織の枠の読み直しだけを、少し遅らせて失敗させる。失敗すると組織の枠は読み込めなかった画面に替わる
     await page.route('**/api/aoba/organization', async (route) => {
-      if (!created) return route.continue();
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      return route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } });
+      if (created) organizationReads++;
+      return route.continue();
     });
     await page.goto('/aoba/admin');
     await page.getByRole('button', { name: 'ワークスペースを作る' }).first().click();
     const dialog = page.getByRole('dialog', { name: 'ワークスペースを作る' });
     await expect(dialog.getByRole('combobox')).toBeEnabled();
-    await dialog.getByLabel('名前').fill('読み直しに失敗');
+    await dialog.getByLabel('名前').fill('読み直しは閉じた後');
     await dialog.getByRole('button', { name: '作る' }).click();
 
-    await expect(page.getByRole('dialog', { name: 'ワークスペースを作りました' })).toBeVisible();
-    await expect(page.getByRole('heading', { level: 1, name: '読み込めませんでした' })).toBeVisible();
+    const done = page.getByRole('dialog', { name: 'ワークスペースを作りました' });
+    await expect(done).toBeVisible();
+    // 一覧だけは作れた時点で読み直す。組織の枠は、完了の表示を閉じるまで読み直さない
+    await expect(page.locator('tbody tr', { hasText: '読み直しは閉じた後' })).toHaveCount(1);
+    expect(organizationReads).toBe(0);
+
+    await page.keyboard.press('Escape');
+    await expect(done).toBeHidden();
+    await expect.poll(() => organizationReads).toBe(1);
   });
 
   test('選んだ最初のリーダーが指せなくなっていて 404 になったら、選び直しを促し、候補を取り直す', async ({ page }) => {

@@ -57,6 +57,9 @@
   // 作れたワークスペース。あれば完了の表示。組織は送り始めたときのもの
   let created = $state<{ id: string; name: string; slug: string } | null>(null);
   let openButton = $state<HTMLButtonElement>();
+  // 作れたが、組織の枠の読み直しがまだ。ダイアログが閉じたら読み直す。「開く」の移動中は二重に押させない
+  let needsRefresh = $state(false);
+  let opening = false;
 
   const timezone = browserTimezone();
   // 開き直し、部品の取り外し、組織の入れ替わりで進める。古い読み込みと古い応答が、今の状態を上書きしない
@@ -72,8 +75,17 @@
     return () => {
       generation++;
       submitting = false;
+      needsRefresh = false;
       open = false;
     };
+  });
+
+  // 作った後にダイアログが閉じたら（×、Esc、背景）、組織の枠のデータ（has_workspaces、所属するワークスペース）を読み直す。
+  // 「開く」は移る動作が読み直すので、ここでは読み直さない（openCreated が needsRefresh を下ろす）
+  $effect(() => {
+    if (open || !needsRefresh) return;
+    needsRefresh = false;
+    void invalidateAll().catch(() => undefined);
   });
 
   // 空の作成のフォームに戻す。開いたときと「続けて作る」が同じ状態から始める
@@ -102,13 +114,16 @@
 
   // 閉じて、作ったワークスペースの画面へ移り、見出しにフォーカスを置く
   async function openCreated(): Promise<void> {
-    if (created === null) return;
+    if (created === null || opening) return;
     const target = created;
+    opening = true;
+    needsRefresh = false;
     open = false;
     await goto(resolve('/[slug]/w/[id]', { slug: target.slug, id: target.id }), { refreshAll: true });
     // 移った先の見出しへフォーカスを置く（移った画面の題は、SvelteKit のルートの読み上げが伝える）
     await tick();
     document.querySelector<HTMLElement>('main h1')?.focus();
+    opening = false;
   }
 
   async function loadCandidates(): Promise<void> {
@@ -217,8 +232,8 @@
       if (mine !== generation) return;
       created = { id: result.data.workspace_id, name: name.trim(), slug: targetSlug };
       oncreated?.(result.data.workspace_id);
-      // 組織の枠のデータ（has_workspaces、所属するワークスペース）を読み直す。失敗しても完了の表示は出す
-      void invalidateAll().catch(() => undefined);
+      // 組織の枠のデータの読み直しは、完了の表示を閉じた後に行う（今読み直して失敗すると、枠ごと外れて選べなくなる）
+      needsRefresh = true;
       // 押した「作る」は消えるので、完了の表示の主ボタンへフォーカスを移す
       await tick();
       openButton?.focus();
