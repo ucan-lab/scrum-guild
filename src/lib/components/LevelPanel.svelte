@@ -30,7 +30,7 @@
   const titleId = $props.id();
   let title = $state<HTMLElement>();
 
-  // 読み直した後に、面の題へフォーカスを移す（自分の設定の画面の「もう一度試す」）
+  // 読み直した後に、面の題へフォーカスを移す（マイプロフィールの画面の「もう一度試す」）
   export function focusTitle(): void {
     title?.focus();
   }

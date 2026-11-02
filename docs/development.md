@@ -2,7 +2,7 @@
 
 状態: 方針（2026-10-22 に決めた）。土台を作るときに、道具の名前や設定の細部を足す。
 
-前提: 作るのはほぼ1人で、実装の多くは Claude のセッション（手元のワークツリーか、クラウド）が受け持つ。ステージングは持たず（`requirements.md` の「運用」）、D1 のマイグレーションは戻せない。全組織が1つの D1 に入る。
+前提: 作るのはほぼ1人で、実装の多くは Claude と Codex のセッションが受け持つ。Claude から Codex に実装を委譲する使い方と、Codex に直接開発を任せる使い方を併用する。ステージングは持たず（`requirements.md` の「運用」）、D1 のマイグレーションは戻せない。全組織が1つの D1 に入る。
 
 ## 技術の選択
 
@@ -74,7 +74,7 @@
   - API トークンの範囲: 権限の検査（組織の中の操作は `checkOrganizationPermission()`、組織の外の操作は入れる組織の確かめ）の後、回数の上限と入力の読み取りの前に行う。入力を読む前なので、本文が壊れていても範囲の足りない呼び出しは 400 でなく 403 になる。ワークスペースの確かめも入力を使うので、範囲の検査より後
     - `mode: 'write'` の操作は、`write` のトークンだけが通る。`read` のトークンは 403 の `forbidden`
     - `permission: 'operator'` の操作は、運用者かどうかを引く前に、どのトークンでも 403 の `forbidden`
-    - 定義に `cookieOnly: true` を付けた操作も、どのトークンでも 403 の `forbidden`。付けるのは Cookie のセッションの行や Cookie を直に扱う操作と、トークンを増やしたり減らしたりする操作と、一度使うとアカウントでは戻せない枠を使う操作で、今は `logout`、`create-my-organization`（`src/shared/operations/organization/create-my-organization.ts`。お試し中の組織の枠は本人が画面で操作したときだけ使い、取り込んだ内容に仕込まれた指示で動く AI にトークンで使わせない）、`consent-record`（`src/shared/operations/session/consent.ts`。同意は本人がブラウザで本文を見てするもので、トークンで代わりにさせない）、`token-create`、`token-list`、`token-revoke`（`src/shared/operations/session/token.ts`。自分の設定の「API トークン」の節が呼ぶ。トークンで呼べると、盗まれたトークンが自分の後継を作れる）。`token-create` は、有効な（取り消していない、期限前の）行が1アカウントに20件（`API_TOKEN_MAX_ACTIVE`）あると 409 の `conflict`（`details.reason` は `limit`）で断る。数の確かめは `INSERT ... SELECT ... WHERE` の1文に入れ、同時の発行でも超えない（`test/api-token-settings-fixes.test.ts`）。名前の NUL は入力の検証で 400 にする。組織の外の操作にだけ付けられ、組織の中の操作や `true` 以外の値は、登録のときの検査（`assertOperationDefinition`）で弾く
+    - 定義に `cookieOnly: true` を付けた操作も、どのトークンでも 403 の `forbidden`。付けるのは Cookie のセッションの行や Cookie を直に扱う操作と、トークンを増やしたり減らしたりする操作と、一度使うとアカウントでは戻せない枠を使う操作で、今は `logout`、`create-my-organization`（`src/shared/operations/organization/create-my-organization.ts`。お試し中の組織の枠は本人が画面で操作したときだけ使い、取り込んだ内容に仕込まれた指示で動く AI にトークンで使わせない）、`consent-record`（`src/shared/operations/session/consent.ts`。同意は本人がブラウザで本文を見てするもので、トークンで代わりにさせない）、`token-create`、`token-list`、`token-revoke`（`src/shared/operations/session/token.ts`。マイプロフィールの「API トークン」の節が呼ぶ。トークンで呼べると、盗まれたトークンが自分の後継を作れる）。`token-create` は、有効な（取り消していない、期限前の）行が1アカウントに20件（`API_TOKEN_MAX_ACTIVE`）あると 409 の `conflict`（`details.reason` は `limit`）で断る。数の確かめは `INSERT ... SELECT ... WHERE` の1文に入れ、同時の発行でも超えない（`test/api-token-settings-fixes.test.ts`）。名前の NUL は入力の検証で 400 にする。組織の外の操作にだけ付けられ、組織の中の操作や `true` 以外の値は、登録のときの検査（`assertOperationDefinition`）で弾く
   - 組織: `src/server/db/enter-organization.ts` が、slug から `organizations` を引き（共通の入口）、その人が入れることと、停止していないことを確かめる（組織の中の入口）。共通の表と組織の中の表は別の問い合わせで、結合しない。`users` はセッションのアカウントの ID と `users.account_id` の一致で引き、無効にされた人は断る。管理者でも所属もない人は、アカウントに結んだログインの手段と ID で承諾待ちの招待に当てる（このときだけ `account_logins` を引く）。ログインの手段と ID が一致する `users` の行が無効なら、アカウントに結ばれる前の行でも断る。招待だけで入った人は `invitedOnly` になり、`invitee` の操作以外は 404 で返す。組織が無い、入れない、のどちらも 404 の `not_found`。停止している組織は、停止していなければ入れた人にだけ 403 の `organization_suspended` を返し、入れない人には 404 の `not_found` を返す（「API のエラーとログ」）。
   - ワークスペース: `workspace_id` を入口の組織で絞り、その人の今の所属と一緒に1つの問い合わせで引く。別の組織のものと存在しないものは 404。引けたものが「確かめたワークスペース」（`VerifiedWorkspace`。閉じているか、その人のロールを持つ）になり、処理に渡す直前に `assertVerifiedWorkspace()` で実行時にも確かめる。
   - 入力: ID の入力は `src/shared/id.ts` の `idSchema`（64字まで）で書き、DB に問い合わせる前に桁違いに長い値を止める。壊れた JSON や形の違う入力は 400 の `invalid_input` で、`details` に項目ごとの `path`、`code`、`message` を入れる。本文は 1MiB までで、`Content-Length` の無い本文も読んだ分を数えて止め、超えれば 413（`code` は `invalid_input`）。未ログインの呼び出しには本文を読ませない。
@@ -411,6 +411,7 @@ claude mcp add scrum-guild -- node <main の作業コピーの絶対パス>/cli/
 ## AI 開発の分担
 
 人が決め、AI が作り、別の AI が点検する。マージするかは、パスの規則と人が決める。
+次の表は Claude が工程を進行する場合の分担。Codex に直接依頼する場合は「Codex で開発する」に従う。
 
 | 工程 | 担い手 | 道具 |
 | --- | --- | --- |
@@ -447,13 +448,13 @@ claude mcp add scrum-guild -- node <main の作業コピーの絶対パス>/cli/
 | `session-title.mjs` と `session-title-rules.mjs`（SessionStart の起動と再開） | 付ける: ブランチ名の先頭の数字（0 始まりでない 9 桁まで）を Issue の番号として、`gh` で Issue の題を引き、セッション名を `#<番号> <題>`、そのブランチに PR があれば `#<番号> PR #<PR の番号> <題>` にする（PR が複数なら開いているものを先に使う）。題の制御文字と書式の文字は取り除き、80 文字に切る。付けない: 名前が既にある（`--name` や `/rename`）、番号の無いブランチ、`gh` が失敗した。`gh pr list` だけが失敗したときは Issue の題だけで付ける。何があってもセッションは止めない |
 | `session-start.sh`（SessionStart の起動と再開） | クラウドのセッションだけで、`/opt/node<.node-version の主版>/bin` があればそれを PATH の前に置く行を `CLAUDE_ENV_FILE` に足し（同じ行は重ねない。主版を読めない、`/opt/node<主版>` が無い、`CLAUDE_ENV_FILE` が無いときは、理由を出して足さない）、`pnpm install --frozen-lockfile` を行う。pnpm が無ければ corepack で用意し、corepack も無ければ（Node 25 から同梱されない）`packageManager` の版を `npm install -g` で入れる |
 
-Codex は `.claude/` のフックを通らない（`codex exec` が起こす実装専用のエージェント。`.codex/agents/implementer.toml`）。代わりに次で守る。
+Claude から `codex exec` で呼ぶ実装専用のエージェント（`.codex/agents/implementer.toml`）は `.claude/` のフックを通らない。委譲するときは次で守る。Codex に直接依頼する場合は下の「Codex で開発する」。
 
 - Codex の sandbox は `workspace-write` で、ネットワーク全体を有効にする（`increment-build` が `codex exec` の呼び出しで `-c sandbox_workspace_write.network_access=true` を渡す。Issue の本文の取得や依存の導入に使う。2026-11-02 に決めた）。通信で本番への接続を遮断する守りは無いため、本番の操作と資格情報の読み出しの禁止は `AGENTS.md` の指示に従わせる。資格情報の値が書いた差分に混ざることは、人が差分を読んで止める（`needs-human` ではない通常の PR でも、コミット前に差分を目で確かめる）。`increment-build` の `codex exec` の呼び出しの変更も、人が差分を読む。手元の Codex 0.166.0 の `codex sandbox` では、同じ `workspace-write` の設定で、ネットワークが `false` だと `api.github.com` の名前解決に失敗し、`true` だと HTTP 200 を返すことを確かめた。委譲先のサブエージェントの中で効くことは、実機では確かめていない
-- `AGENTS.md` が `CLAUDE.md` の「守ること」と「コマンド」に従わせ、フックが止めていたこと（本番の操作、`.dev.vars` と `.env`、コミット）を Codex に固有の注意として並べる
-- Codex が戻った後に、呼び出し元のセッションはまず `git status --short` と `git diff --name-only` を見る。変えてよい範囲の外の守るファイル（`.githooks/`、`.claude/`、`.codex/`、`AGENTS.md`、`package.json`、`scripts/` など）が変わっていれば、何も走らせずに止まる（呼び出し元は sandbox の外で動くため、Codex が書き換えたフックやスクリプトを動かさない）。範囲の中だけなら、`pnpm format` と受け入れ条件の検査を走らせ直す（`format.mjs` を通らないため）。コミットは呼び出し元だけが行う
+- `AGENTS.md` が `CLAUDE.md` の「守ること」と「コマンド」に従わせ、フックが止めていたことを指示として並べる。委譲された `implementer` には、コミットと外部への書き込み、守る設定の変更をさせない
+- Codex が戻った後に、呼び出し元のセッションはまず `git status --short` と `git diff --name-only` を見る。変えてよい範囲の外の守るファイル（`.githooks/`、`.claude/`、`.codex/`、`.agents/`、`AGENTS.md`、`package.json`、`scripts/` など）が変わっていれば、何も走らせずに止まる（呼び出し元は sandbox の外で動くため、Codex が書き換えたフックやスクリプトを動かさない）。範囲の中だけなら、`pnpm format` と受け入れ条件の検査を走らせ直す（`format.mjs` を通らないため）。コミットは呼び出し元だけが行う
 
-`.codex/` と `AGENTS.md` は sandbox とネットワークの設定、Codex が読む決まりを変えられるので、変えた PR には `needs-human` が付く（下の「マージの判定」）。
+`.codex/`、`.agents/` と `AGENTS.md` は sandbox とネットワークの設定、Codex が読む決まりを変えられるので、変えた PR には `needs-human` が付く（下の「マージの判定」）。
 
 allow に入れるものは、確認の数を減らし、残る確認を書き込みや外に出る操作に絞るために選ぶ。
 
@@ -483,6 +484,73 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 - 手元の機械では `wrangler login` しない（したら `wrangler logout` しておく）。シェルに `CLOUDFLARE_API_TOKEN` を置かない。手元のセッションは、人が置いた資格情報をそのまま使えるため
 
 止められた操作は人に任せる。セッションは別の手で抜けようとせず、止まった操作と理由を人に伝える。手元のセッションでは、人が Claude Code の入力欄で先頭に `!` を付けて打つ（フックを通らない）。人のいないクラウドのセッションでは打つ人がいないので、止まった操作を PR か Issue に書き残し、人が手元で行う。`.dev.vars` は人が `.dev.vars.example` を写して値を入れる（`cp .dev.vars.example .dev.vars` もフックが止めるので、人が `!` を付けて打つ）。本体の作業コピーに1つ置けば、ワークツリーは `post-checkout` が張るリンクで使う（上の「ワークツリーで作業する」）。
+
+### Codex で開発する
+
+2026-11-02 に、Codex への直接依頼と Claude からの実装の委譲を併用する形にした。
+共通の設計とコマンドは `CLAUDE.md` と `docs/` を原本にし、Codex 固有の使い分けは `AGENTS.md` に置く。
+ユーザー共通のモデル、推論の強さ、MCP、承認と sandbox の設定は `~/.codex/config.toml` を使い、このリポジトリでは固定しない。
+Claude からの委譲では、上に書いた `codex exec` の引数と `implementer` の設定が適用される。
+
+| 使い方 | Codex の担当 | 終わり |
+| --- | --- | --- |
+| 人から直接依頼する | 調査、実装、検証、差分の点検、PR の準備 | ローカルの差分と検証結果。指示済みならコミットや PR 作成まで進める |
+| Claude が `implementer` として委譲する | 渡された範囲の実装と検査 | コミットせず、差分と結果を Claude に返す。レビューと PR は Claude が進める |
+| レビューだけを依頼する | 指定した差分の問題を調べ、根拠と場所を報告する | コードを変更せず報告する |
+
+直接依頼では、作業用のワークツリーから Codex を開く。既にあるワークツリーはそのまま使い、重ねて切らない。
+本体で依頼を始めた場合は、Codex が編集前にワークツリーを切る。
+Issue が無い直接依頼には、内容を表す短いブランチ名を使える。起票は必須にしない。
+`post-checkout` が行う Issue 更新と秘密ファイルのリンク作成を承認されていないときは、作成時だけフックを外す。commit と push の保護は外さない。
+
+```bash
+git fetch origin
+git -c core.hooksPath=/dev/null worktree add worktrees/123-invitation-expiry -b 123-invitation-expiry origin/main
+codex -C worktrees/123-invitation-expiry
+```
+
+直接依頼の例:
+
+```text
+$increment-build #123 を実装して。検証まで進めて、コミットと PR はまだ作らない。
+$done-check 今の差分を完了条件と照合し、範囲内の問題を直して。
+origin/main との差分をレビューして。コードは変更しない。
+```
+
+#### スキルの共有
+
+Codex が探索する入口は `.agents/skills/`。原本を複製せず、共通の手順と Codex 固有の進行を分ける。
+
+| スキル | 配置と役割 |
+| --- | --- |
+| `add-operation` | `.claude/skills/add-operation` への相対リンク。API の操作を足す手順を共有する |
+| `d1-migration` | `.claude/skills/d1-migration` への相対リンク。D1 の変更と検証を共有する。Issue や PR への書き込みは直接依頼時の承認の範囲に従う |
+| `ui-polish` | `.claude/skills/ui-polish` への相対リンク。画面を作る・直す基準を共有する |
+| `increment-build` | Codex 用の `SKILL.md`。着手の判定と受け入れ条件は Claude 側の原本を参照し、実装の進行は Codex が受け持つ |
+| `done-check` | Codex 用の `SKILL.md`。検査とレビューの観点は既存の原本を参照し、未コミット・新規ファイルも点検する |
+
+リンクはリポジトリ内の相対パスなので、ワークツリーと clone の中でも同じ原本を指す。
+工程の2つを Claude 用スキル全体へのリンクにしない。Claude の道具呼び出し、自動コミットと PR 作成、Codex への実装委譲まで実行してしまうため。
+`sprint-*`、`daily-scrum`、`pr-*` などは今回の Codex 用の探索対象には加えていない。必要なときに互換性を確認して追加する。
+特に `daily-scrum` の Claude Artifact 更新と `rename-session` のセッション操作は、そのまま Codex に移せない。
+スキルを直すときは、共有分は `.claude/skills/` の原本、Codex 固有の進行は `.agents/skills/` を直す。
+
+#### 検証と承認
+
+`.claude/` のフックは自動で動かない。整形は変更ファイルに絞って行い、検査のコマンドは `CLAUDE.md` を使う。
+本番操作と秘密ファイルの読み書き、手元の e2e の禁止は `AGENTS.md` の指示で守る。これらを機械的に遮断する Codex 用フックを追加したわけではない。
+git の保護フックと CI は既存のものを使う。
+レビューの観点は `.claude/agents/` と `.claude/checklists/` を読み、Codex のサブエージェントへ渡す。実装した本人の自己点検を独立レビューとして数えない。
+必要な独立レビューができなければ未実施と報告し、CI と人が確認できる状態で渡す。
+
+直接依頼のコミットは人の指示があるときに行う。push、PR と Issue への書き込み、コメント送信も対象と操作について指示があるときに行う。
+承認が必要な操作の前にローカルの実装・検証と投稿内容の準備を終え、既に承認されたことは聞き直さない。
+`implementer` からは外部へ書き込まず、呼び出し元へ戻す。
+
+新しい Codex セッションで `/skills` または `$` の候補を開き、この5つが見えることを確かめる。
+見えなければ作業ディレクトリとリンク先を確かめてから再起動する。
+2026-11-02 に Codex CLI 0.166.0 の `codex debug prompt-input` で、この5つのスキルのメタデータと、直接依頼・委譲を分けた `AGENTS.md` が読み込まれることを確かめた。実際の Issue の実装から PR 作成までを通す確認は別に行う。
+手元の設定の仕様は [OpenAI の AGENTS.md](https://learn.chatgpt.com/docs/agent-configuration/agents-md)、[スキル](https://learn.chatgpt.com/docs/build-skills)、[設定](https://learn.chatgpt.com/docs/config-file/config-basic) を参照する。
 
 ### クラウド環境
 
@@ -604,7 +672,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 | wrangler の設定（見本の Worker の `wrangler.design.jsonc` も含む）、デプロイのスクリプト、依存 | `wrangler*.jsonc` など、`scripts/`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`patches/`、`.npmrc`、Node の版の指定 |
 | lint の設定（組織で絞る層を守る規則を含む） | `eslint.config.*` |
 | GitHub と Claude の設定、git のフック | `.github/`、`.claude/settings.json`、`.claude/hooks/`、`.mcp.json`、`.githooks/` |
-| Codex の実装専用のエージェントと設定（sandbox とネットワークを変えられる）、Codex が読む決まり | `.codex/`、`AGENTS.md` |
+| Codex のエージェントと設定（sandbox とネットワークを変えられる）、Codex が読む決まりとスキル（入れ子も含む） | `.codex/`、`.agents/`、`AGENTS.md`、`AGENTS.override.md` |
 | CI の `ai-review` が書き込みのトークンを持って読むスキルとエージェント | `.claude/skills/ai-review/`、`.claude/agents/` |
 | `.claude/` の下のファイル（入れ子の `.claude/` も含む。CI が書き込みのトークンを持って走らせるスクリプトを含む）。ただし文書だけの PR の範囲のスキルとチェックリストの `.md` を除く | `.claude/` の下の、`.claude/skills/` と `.claude/checklists/` の `.md` のほか（`.claude/skills/sprint-review/check-criterion.py`、`.claude/skills/acceptance-video/` の `.mjs`、`.py`、`.json` など） |
 
@@ -909,7 +977,7 @@ GitHub のアカウントも Google のアカウントも使わない人のた�
   - 開く前に `POST /api/me` を1回呼び、ブラウザを開かずに止まる条件を見分ける。画面で使うときと同じく、この呼び出しでも seed のセッションの期限が延びる（前回から1時間以上たっていれば、そこから30日）。つながらないときは `pnpm dev`（`--preview` のときは `pnpm preview`）を立てる案内、401 のときは `pnpm db:seed` の案内（seed を流していない、30日で切れた、別のワークツリーの D1 を見ている。`operator` は `.dev.vars` の `OPERATOR_LOGIN_IDS` で決まるので、ワークツリーに `.dev.vars` が無いときや、その `OPERATOR_LOGIN_IDS` に seed の運用者の `github:9000000000000001` が無いときも 401 になる。直し方は上の「ワークツリーで作業する」と、この節の `OPERATOR_LOGIN_IDS` の決まり。直したら立て直す）、10秒答えないときと、そのほかの 2xx 以外（リダイレクトは辿らない）は状態を出す。Chromium を起動できないときは、入っていなければ `pnpm exec playwright install chromium` を流すよう案内する（画面を出せない SSH の先や CI では使えない）。止まるときの終了コードは 1
   - 引数の誤りも、Cookie を置かず通信もせずに止まる。同じ種類（who か path）が2つ以上、`--preview` 以外のフラグ、知らない who（選べるキーと説明を並べる）、受け付けない path。path はログイン後の戻り先と同じ基準（`safeReturnTo`）で、`//host`、バックスラッシュ、ドット区間、完全な URL、相対パス、最初の区間が `api` か `login` のパス（`/api/me`、`/login?x=1`。`/apiary` は開ける）は、`/` に直さず止める。完全な URL を受け付けないのは、ポートがオフセット（`DEV_PORT_OFFSET`、`.dev-port-offset`、ワークツリーの名前）で決まり、受け付ける範囲だけが広がるため。開く先の origin は http の `localhost` か `127.0.0.1` だけで、seed のトークンを手元の外へ送らない
   - 毎回新しい context に Cookie を置くので、普段のブラウザの Cookie とも、別のワークツリーを開いたブラウザの Cookie とも混ざらない（localhost の Cookie はポートで分かれない）。複数の人を並べるときは端末を2つ使い、それぞれで `pnpm dev:open admin` と `pnpm dev:open member` を打つ（1回に開くのは1人）。ブラウザを閉じるか Ctrl+C で終わる
-- テーマと言葉は、本物の設定の API（自分の設定、組織の設定）で切り替えてから撮る。撮影のための URL のパラメータは作らない
+- テーマと言葉は、本物の設定の API（マイプロフィール、組織の設定）で切り替えてから撮る。撮影のための URL のパラメータは作らない
 - 「今日」は、`.dev.vars` の `DEV_NOW`（ISO 8601、時差付き。例 `2026-10-26T10:00:00+09:00`）で固定できる。置くと `now()`（`src/shared/clock.ts`）がその時刻を返し続け、時刻は進まない（日付だけ固定して時刻を進めると、時刻を画面に出したときに写りが変わるため）。完了日時を含めて画面の写りが毎回同じになる。時刻が止まるので、同じ人が2回完了にした要求（ダブルクリック、2つのタブ）は同じ完了日時を持ち、タスクの完了の文はこれを見分ける条件を持つ（`docs/data-model.md` の「書き込みの単位」）。値は Worker のミドルウェア（`src/server/dev-clock.ts`）が `clock.ts` に渡す（`clock.ts` は `scripts/` からも読むので `cloudflare:workers` を import しない）。`pnpm dev` と `pnpm preview` は開き直すと反映される。説明は `.dev.vars.example`
   - 本番に入れない守り: `PUBLIC_ORIGIN` がループバックのホスト（`localhost`、`127.0.0.1`、`[::1]`）への http でないのに `DEV_NOW` があれば、API（`/api`）のすべてのリクエストを 500 にする。画面の資産は Worker を通らないので含まない。値が空でも、解釈できない日時（時差が無い、存在しない日付）でも同じ。`PUBLIC_ORIGIN` の検査と同じ形のミドルウェアで、デプロイの煙のテスト（`/api/health`）が見つけて前の版へ戻す。起動は止めない
 - 開発用の GitHub OAuth App と Google の OAuth クライアントを別に作り、手で本物のログインを確かめるときに使う。Google の開発用のクライアントは同意画面を「テスト」のままにし、確かめる人をテストユーザーに登録する

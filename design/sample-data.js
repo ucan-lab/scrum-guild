@@ -272,7 +272,7 @@ Object.assign(window.SQ_DATA, {
     { organization: "ひばり工房", ws: "デザイン相談室", by: "ユイ", role: "member", at: "10/19" },
   ],
 
-  // 自分の設定（自分は me のユーザー）
+  // マイプロフィール（自分は me のユーザー）
   mine: {
     capacityHistory: [["2026-10", 8, 12.5, "月・火・水・木・金"], ["2026-04", 6, 12.5, "月・火・水・木"]],
     weekdays: [1, 2, 3, 4, 5],

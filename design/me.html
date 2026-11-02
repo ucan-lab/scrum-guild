@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Scrum Guild 自分の設定</title>
+<title>Scrum Guild マイプロフィール</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Zen+Old+Mincho:wght@700;900&display=swap">
@@ -18,8 +18,8 @@
 <script src="kit.js"></script>
 <script>
 "use strict";
-// 自分の設定: 届いた招待（この組織のワークスペースへの招待。本文の先頭に囲みの知らせで）、稼働の基準、休み、テーマ、API トークン、全ワークスペースの積載量、経験値の明細。
-// 左のメニューの「自分の設定」には、届いた招待の件数（.nav-badge。畳んだ列では点 .nav-item-invite）を付ける
+// マイプロフィール: 届いた招待（この組織のワークスペースへの招待。本文の先頭に囲みの知らせで）、稼働の基準、休み、テーマ、API トークン、全ワークスペースの積載量、経験値の明細。
+// アカウントのボタンに招待の点、メニューの「マイプロフィール」に届いた招待の件数を付ける
 const { D, t, icon, esc, pageHead, load, levelPanel } = SQ;
 const M = D.mine;
 const WEEK = ["日", "月", "火", "水", "木", "金", "土"];
@@ -28,7 +28,7 @@ function setting(title, desc, body) {
 }
 
 SQ.mount("me", () => `
-  ${pageHead("ミナト", "自分の設定", [], `<button class="btn is-primary" type="button" data-toast="保存しました">保存する</button>`)}
+  ${pageHead("ミナト", "マイプロフィール", [], `<button class="btn is-primary" type="button" data-toast="保存しました">保存する</button>`)}
   ${D.receivedInvites.map((i) => `<div class="callout is-info">${icon("mail")}<span>${esc(i.organization)}の${esc(i.by)}さんから「${esc(i.ws)}」への招待が届いています（${i.role === "member" ? "一般" : t("leader")}、${esc(i.at)}）。</span>
     <div class="callout-actions"><button class="btn is-sm is-primary" type="button" aria-label="${esc(i.ws)}への招待を承諾する" data-toast="「${esc(i.ws)}」に参加しました">承諾する</button><button class="btn is-sm is-quiet" type="button" aria-label="${esc(i.ws)}への招待を辞退する" data-toast="辞退しました">辞退する</button></div></div>`).join("")}
   ${M.allocTotals.filter(([, v]) => v > 100).map(([m, v]) => `<div class="callout is-warn">${icon("alert")}<span>${+m.slice(5)}月は、所属する${t("workspace")}の配分の合計が ${v}% です。各${t("leader")}に相談してください。この知らせは本人にだけ見えています。</span></div>`).join("")}
