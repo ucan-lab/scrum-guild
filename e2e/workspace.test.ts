@@ -408,20 +408,23 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await page.getByRole('button', { name: 'ワークスペースを作る' }).first().click();
     const dialog = page.getByRole('dialog', { name: 'ワークスペースを作る' });
     await expect(dialog.getByRole('combobox')).toBeEnabled();
-    await dialog.getByLabel('名前').fill('読み直しは閉じた後');
+    // e2e-repeat は同じテストを同じ DB に繰り返すので、名前は実行ごとに変える
+    const suffix = Date.now().toString(36);
+    const firstName = `読み直し${suffix}`;
+    await dialog.getByLabel('名前').fill(firstName);
     await dialog.getByRole('button', { name: '作る' }).click();
 
     const done = page.getByRole('dialog', { name: 'ワークスペースを作りました' });
     await expect(done).toBeVisible();
     // 一覧だけは作れた時点で読み直す（一覧の行が出たら、作れた直後の読み直しは終わっている）。組織の枠は、完了の表示を閉じるまで読み直さない
-    await expect(page.locator('tbody tr', { hasText: '読み直しは閉じた後' })).toHaveCount(1);
+    await expect(page.locator('tbody tr', { hasText: firstName })).toHaveCount(1);
     expect(organizationReads).toBe(0);
 
     // 「続けて作る」で作成のフォームに戻っても、まだ読み直さない。2つ目を作って閉じると、1回だけ読み直す
     await done.getByRole('button', { name: '続けて作る' }).click();
     const again = page.getByRole('dialog', { name: 'ワークスペースを作る' });
     await expect(again.getByRole('combobox')).toBeEnabled();
-    await again.getByLabel('名前').fill('読み直しは閉じた後 その2');
+    await again.getByLabel('名前').fill(`${firstName}その2`);
     await again.getByRole('button', { name: '作る' }).click();
     await expect(page.getByRole('dialog', { name: 'ワークスペースを作りました' })).toBeVisible();
     expect(organizationReads).toBe(0);
@@ -448,7 +451,8 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await page.getByRole('button', { name: 'ワークスペースを作る' }).first().click();
     const dialog = page.getByRole('dialog', { name: 'ワークスペースを作る' });
     await expect(dialog.getByRole('combobox')).toBeEnabled();
-    await dialog.getByLabel('名前').fill('開いて移る');
+    const openedName = `開く${Date.now().toString(36)}`;
+    await dialog.getByLabel('名前').fill(openedName);
     await dialog.getByRole('button', { name: '作る' }).click();
     await page
       .getByRole('dialog', { name: 'ワークスペースを作りました' })
@@ -456,10 +460,10 @@ test.describe('管理者（あおば開発のミナト）', () => {
       .click();
 
     await expect(page).toHaveURL(/\/aoba\/w\/[0-9a-f-]{36}$/);
-    await expect(page.locator('.page-eyebrow')).toHaveText('開いて移る');
+    await expect(page.locator('.page-eyebrow')).toHaveText(openedName);
     // 移る動作が組織の枠を読み直す（所属するワークスペースにも入っているので、メニューに出る）
     expect(organizationReads).toBeGreaterThanOrEqual(1);
-    await expect(page.locator('.ws-menu > button')).toContainText('開いて移る');
+    await expect(page.locator('.ws-menu > button')).toContainText(openedName);
   });
 
   test('選んだ最初のリーダーが指せなくなっていて 404 になったら、選び直しを促し、候補を取り直す', async ({ page }) => {
