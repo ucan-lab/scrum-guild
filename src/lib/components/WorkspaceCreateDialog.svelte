@@ -76,8 +76,12 @@
     return () => {
       generation++;
       submitting = false;
-      needsRefresh = false;
       open = false;
+      // 完了の表示のまま部品が外れた（戻る、再描画）。同じ枠の中の移動では枠のデータが読み直されないので、ここで読み直す
+      if (needsRefresh) {
+        needsRefresh = false;
+        void invalidateAll().catch(() => undefined);
+      }
     };
   });
 
