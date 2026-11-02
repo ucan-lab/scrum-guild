@@ -103,7 +103,24 @@ function hasValue(value: TaskHistoryValue): boolean {
   return value !== null && value !== '';
 }
 
+// 決まった欄の値の書き込み（キーは field）。値の全文は履歴に無く、欄の { id, name } か null（書かれていない）だけを持つ。
+// 書いた（なし → あり）、直した（あり → あり）、空にした（あり → なし）を、欄の名前つきで出す
+function detailFieldLine(change: TaskHistoryEntry['changes'][number], t: Translate): HistoryLine {
+  const named = [change.after, change.before].find(
+    (value): value is { id: string; name: string } => typeof value === 'object' && value !== null,
+  );
+  const name = nameText(named?.name ?? '', t);
+  const key =
+    change.after === null
+      ? 'historyDetailCleared'
+      : change.before === null
+        ? 'historyDetailWritten'
+        : 'historyDetailEdited';
+  return { label: null, text: t(key, { name }) };
+}
+
 function lineOf(change: TaskHistoryEntry['changes'][number], created: boolean, t: Translate): HistoryLine {
+  if (change.field === 'field') return detailFieldLine(change, t);
   const label = historyFieldLabel(change.field, t);
   // 本文と知らない列は、値を出さず、直したことだけを出す
   if (VALUELESS_FIELDS.has(change.field) || !FIELD_LABELS.has(change.field)) {

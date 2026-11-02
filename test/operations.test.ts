@@ -182,8 +182,12 @@ describe('セッションの更新', () => {
   });
 
   test('書き直しに失敗しても、セッションは読めて、ログには名前だけを残す', async () => {
+    const createdAt = new Date().toISOString();
     const person = await createPerson({
-      sessionOverrides: { last_used_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() },
+      sessionOverrides: {
+        created_at: createdAt,
+        last_used_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+      },
     });
     // batch() だけが失敗する D1。例外の message には SQL や接続の詳細が混ざりうる
     const failing = new Proxy(env, {
@@ -204,6 +208,7 @@ describe('セッションの更新', () => {
     expect(session).toEqual({
       accountId: person.accountId,
       tokenHash: await hashSessionToken(person.token),
+      createdAt,
       refreshed: false,
     });
     const logged = error.mock.calls.flat().join('\n');

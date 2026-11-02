@@ -170,14 +170,14 @@ async function soloLeaderWorld() {
 }
 
 describe('first-steps: リーダー', () => {
-  test('何も済んでいないリーダーは、招待とバックログの最初のタスクが必須で、スプリントが任意', async () => {
+  test('何も済んでいないリーダーは、バックログの最初のタスクだけが必須で、招待とスプリントが任意', async () => {
     const solo = await soloLeaderWorld();
     const view = await read(solo.slug, solo.leader);
 
     expect(view.role).toBe('leader');
     expect(view.steps.map(({ key, done, optional }) => ({ key, done, optional }))).toEqual([
       { key: 'became_leader', done: true, optional: false },
-      { key: 'invite_members', done: false, optional: false },
+      { key: 'invite_members', done: false, optional: true },
       { key: 'first_backlog_task', done: false, optional: false },
       { key: 'start_sprint', done: false, optional: true },
     ]);
@@ -225,7 +225,8 @@ describe('first-steps: リーダー', () => {
     expect(doneOf(await read(world.slug, world.leader)).first_backlog_task).toBe(false);
 
     await create({});
-    expect(doneOf(await read(world.slug, world.leader)).first_backlog_task).toBe(true);
+    // 必須はこの手順だけなので、済むと全体が消える
+    expect(await read(world.slug, world.leader)).toEqual({ role: null, steps: [] });
   });
 
   test('スプリントは、始めたもの（進行中か終了）があれば済み。計画中と削除したものは数えない', async () => {
@@ -241,32 +242,55 @@ describe('first-steps: リーダー', () => {
     expect(doneOf(await read(world.slug, world.leader)).start_sprint).toBe(true);
   });
 
-  test('必須の2つが済むと消える。スプリントが未完でも消える。片方だけでは消えない', async () => {
+  test('招待をしていなくても、バックログにタスクがあれば消える。スプリントが未完でも消える', async () => {
     const world = await soloLeaderWorld();
     await createTask(world.organization, world.workspace.id, world.admin.userId!);
-    const half = await read(world.slug, world.leader);
-    expect(half.role).toBe('leader');
-    expect(doneOf(half)).toMatchObject({ invite_members: false, first_backlog_task: true, start_sprint: false });
-
-    const invitee = await createPerson();
-    await createInvitation(world.organization, world.workspace.id, world.leader.userId!, invitee.login);
 
     expect(await read(world.slug, world.leader)).toEqual({ role: null, steps: [] });
   });
 
+  test('招待を済ませても、バックログにタスクが無い間は消えない', async () => {
+    const world = await soloLeaderWorld();
+    const invitee = await createPerson();
+    await createInvitation(world.organization, world.workspace.id, world.leader.userId!, invitee.login);
+
+    const view = await read(world.slug, world.leader);
+
+    expect(view.role).toBe('leader');
+    expect(doneOf(view)).toMatchObject({ invite_members: true, first_backlog_task: false, start_sprint: false });
+  });
+
+  test('招待の手順は任意で、ほかの手順の必須か任意かは変わらない', async () => {
+    const solo = await soloLeaderWorld();
+
+    const view = await read(solo.slug, solo.leader);
+
+    expect(Object.fromEntries(view.steps.map((step) => [step.key, step.optional]))).toEqual({
+      became_leader: false,
+      invite_members: true,
+      first_backlog_task: false,
+      start_sprint: true,
+    });
+  });
+
   test('2つのワークスペースのリーダーは、どちらかで済めば済み。未完の手順は名前順で先頭のワークスペースを指す', async () => {
     const world = await soloLeaderWorld();
-    // 名前順（文字コード順）は あさひ班、青葉チーム。青葉チームにだけバックログのタスクがある
+    // 名前順（文字コード順）は あさひ班、青葉チーム。青葉チームにだけ承諾待ちの招待がある
     const first = await createWorkspace(world.organization, world.admin.userId!, { name: 'あさひ班' });
     await createMembership(world.organization, first.id, world.leader.userId!, { role: 'leader' });
-    await createTask(world.organization, world.workspace.id, world.admin.userId!);
+    const invitee = await createPerson();
+    await createInvitation(world.organization, world.workspace.id, world.leader.userId!, invitee.login);
 
     const view = await read(world.slug, world.leader);
 
     const byKey = Object.fromEntries(view.steps.map((step) => [step.key, step]));
-    expect(byKey.first_backlog_task).toMatchObject({ done: true });
-    expect(byKey.invite_members).toMatchObject({ done: false, workspace: { id: first.id, name: 'あさひ班' } });
+    expect(byKey.invite_members).toMatchObject({ done: true });
+    expect(byKey.first_backlog_task).toMatchObject({ done: false, workspace: { id: first.id, name: 'あさひ班' } });
     expect(byKey.start_sprint).toMatchObject({ done: false, workspace: { id: first.id } });
+
+    // どちらかのワークスペースのバックログにタスクがあれば消える
+    await createTask(world.organization, world.workspace.id, world.admin.userId!);
+    expect(await read(world.slug, world.leader)).toEqual({ role: null, steps: [] });
   });
 
   test('一般として所属しているだけのワークスペースの招待、タスクは、リーダーの手順に数えない', async () => {
@@ -454,16 +478,15 @@ describe('first-steps: リーダーの手順の範囲', () => {
 });
 
 describe('first-steps: 読み取りの文', () => {
-  test('必須が済んでいれば、任意の手順の文（スプリント）は流さず、全タスクの索引を読む DISTINCT も使わない', async () => {
+  test('必須が済んでいれば、任意の手順の文（招待、スプリント）は流さず、全タスクの索引を読む DISTINCT も使わない', async () => {
     const world = await soloLeaderWorld();
     await createTask(world.organization, world.workspace.id, world.admin.userId!);
-    const invitee = await createPerson();
-    await createInvitation(world.organization, world.workspace.id, world.leader.userId!, invitee.login);
 
     const { view, sqls } = await readWithSql(world.slug, world.leader);
 
     expect(view).toEqual({ role: null, steps: [] });
     expect(sqls.some((sql) => sql.includes('"sprints"'))).toBe(false);
+    expect(sqls.some((sql) => sql.includes('"invitations"'))).toBe(false);
     expect(sqls.some((sql) => sql.includes('distinct'))).toBe(false);
   });
 
@@ -487,6 +510,7 @@ describe('first-steps: 読み取りの文', () => {
 
     expect(view.role).toBe('leader');
     expect(sqls.some((sql) => sql.includes('"sprints"'))).toBe(true);
+    expect(sqls.some((sql) => sql.includes('"invitations"'))).toBe(true);
     expect(sqls.some((sql) => sql.includes('distinct'))).toBe(false);
   });
 });

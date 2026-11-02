@@ -33,14 +33,20 @@ jobs:
     # 1回の実行で API を数十回呼び、GITHUB_TOKEN の上限（1時間 1,000 回）はリポジトリのワークフローで共有する。
     # 誰でも自分の Issue を開閉できるので、開閉で動かすのは作者が身内の Issue だけにし、上限を使い切らせない。
     # 外の人の Issue の変化は schedule が拾う。ラベルの付け外しは、判定に効くラベルのときだけ動かす。
-    # Issue のテンプレート（story.md）が付けるラベルでも labeled が来るので、作者を問わず開くたびに動かさないため。
+    # Issue のテンプレート（story.md、epic.md）が付けるラベルでも labeled が来るので、作者を問わず開くたびに動かさないため。
+    # epic は、作者が身内か、作者とは別の人が付け外ししたときだけ拾う。外部作者自身へのテンプレートの自動付与では動かさない。
+    # 他人の Issue のラベルを操作するには GitHub の triage 以上の権限が要るので、外部作者の Issue を人が分類した場合は拾える。
     # accepting の完了は、マージで付け替えた実行（成功）だけを拾う。fork の PR を閉じただけの skipped の完了では動かさない
     if: >-
       (github.event_name != 'issues'
         || ((github.event.action == 'labeled' || github.event.action == 'unlabeled')
           && (startsWith(github.event.label.name, 'pt:')
             || startsWith(github.event.label.name, 'status:')
-            || github.event.label.name == 'epic'
+            || (github.event.label.name == 'epic'
+              && (contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.issue.author_association)
+                || (github.event.sender.login != ''
+                  && github.event.issue.user.login != ''
+                  && github.event.sender.login != github.event.issue.user.login)))
             || github.event.label.name == 'sprint-log'))
         || (github.event.action != 'labeled'
           && github.event.action != 'unlabeled'

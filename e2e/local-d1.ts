@@ -1,11 +1,12 @@
 // e2e が手元の D1 に直に SQL を流す。テストが変えた seed の行のうち、API に戻す操作の無いもの（ログアウトで消したセッション、
-// 承諾や取り消しで閉じた招待）を、繰り返し（--repeat-each）と並べて走るほかのテストのために seed の状態へ戻すときだけ使う。
+// 承諾や取り消しで閉じた招待）を seed の状態へ戻すときと、ログイン直後・再認証の場面を用意するときに使う。
+// 繰り返し（--repeat-each）と並べて走るほかのテストに、変更した状態を残さない。
 // 画面と API の振る舞いは本物の操作で確かめ、ここでは確かめない。
 // localhost の wrangler dev（e2e の Worker）にしか送らない（本番の D1 には届かない。scripts/db-seed.ts の --local と同じ）。
 // wrangler d1 execute --local は別プロセスで同じ SQLite のファイルを開き、Worker と取り合って双方に SQLITE_BUSY が出るので使わない（#501）。
 // wrangler dev の手元のエクスプローラーなら、同じ workerd の中で Worker と同じ D1 のオブジェクトが文を順に流す
 import { devPorts } from '../scripts/dev-ports.ts';
-import { sessionInserts } from '../scripts/seed.ts';
+import { sessionInserts, tokenHash } from '../scripts/seed.ts';
 import { SEED_SESSIONS } from '../seed/sessions.ts';
 
 const EXPLORER_D1_URL = `http://localhost:${devPorts(process.env).api}/cdn-cgi/local/explorer/api/d1/database`;
@@ -61,9 +62,8 @@ function findDatabaseId(): Promise<string> {
   return databaseId;
 }
 
-// 文を1つの batch（1つのトランザクション）で流す。値は呼ぶ側が固定の seed の値だけを埋める（外から来た文字は埋めない）。
-// ここで流す文はどれも何度流しても同じ結果（DELETE、seed の値へ戻す UPDATE、INSERT OR IGNORE）
-async function executeLocalD1(statements: string[]): Promise<void> {
+// 文を1つの batch（1つのトランザクション）で流す。値は seed の値とテストが生成した値だけを埋める（外から来た文字は埋めない）。
+export async function executeLocalD1(statements: string[]): Promise<void> {
   const id = await findDatabaseId();
   await callExplorer(
     `${EXPLORER_D1_URL}/${id}/raw`,
@@ -139,6 +139,13 @@ export async function restoreSeedSession(who: keyof typeof SEED_SESSIONS): Promi
   const insert = sessionInserts([SEED_SESSIONS[who]], new Date());
   if (!insert.startsWith('INSERT INTO sessions ')) throw new Error('sessionInserts の文の形が変わった');
   await executeLocalD1([insert.replace(/^INSERT INTO /, 'INSERT OR IGNORE INTO ')]);
+}
+
+// seed を流してから10分以上たっても、signIn はログイン直後の場面から始める。期限や利用日時は変えない。
+export async function refreshSeedSessionCreatedAt(who: keyof typeof SEED_SESSIONS): Promise<void> {
+  await executeLocalD1([
+    `UPDATE sessions SET created_at = '${new Date().toISOString()}' WHERE token_hash = '${tokenHash(SEED_SESSIONS[who].token)}';`,
+  ]);
 }
 
 // パスワードのログインで作られたアカウント（手段 `password`）の同意の行を消す。seed のパスワードの人（seed/passwords.ts）は

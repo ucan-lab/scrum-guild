@@ -23,6 +23,7 @@
     save,
     normalize = (raw) => raw,
     ondirty,
+    onbegin,
     view,
   }: {
     // 保存した値。空は空の文字
@@ -41,6 +42,8 @@
     normalize?: (raw: string) => string;
     // 書きかけがあるかが変わるたびに呼ぶ
     ondirty?: (dirty: boolean) => void;
+    // 直し始めたときに、そのときの保存した値を渡して呼ぶ（保存で「読んだ値」として使う）
+    onbegin?: (started: string) => void;
     view: Snippet<[begin: (event: Event) => void]>;
   } = $props();
 
@@ -69,6 +72,7 @@
     trigger = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
     draft = value;
     error = null;
+    onbegin?.(value);
     editing = true;
     await tick();
     input?.focus();

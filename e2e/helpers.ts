@@ -6,6 +6,7 @@ import { workspaceList } from '../src/shared/operations/workspace/workspace-list
 import { sessionCookieName } from '../src/shared/session-cookie.ts';
 import { word, type DictionaryKey, type TemplateParams } from '../src/shared/vocabulary.ts';
 import { mockOperation } from './operations.ts';
+import { refreshSeedSessionCreatedAt } from './local-d1.ts';
 import {
   exclusionsFor,
   formatStaleExclusions,
@@ -592,6 +593,7 @@ export async function signIn(
   who: keyof typeof SEED_SESSIONS,
 ): Promise<void> {
   if (baseURL === undefined) throw new Error('baseURL が無い');
+  await refreshSeedSessionCreatedAt(who);
   await context.addCookies([
     { name: sessionCookieName(baseURL), value: SEED_SESSIONS[who].token, url: baseURL, httpOnly: true },
   ]);
@@ -666,7 +668,7 @@ export async function mockSeedAdminLists(page: Page): Promise<void> {
   );
 }
 
-// 管理の画面から、自分をリーダーにワークスペースを作り、その画面へ移る（admin でログインしている前提）
+// 管理の画面から、自分をリーダーにワークスペースを作り、完了の表示で「開く」を押してその画面へ移る（admin でログインしている前提）
 export async function createWorkspace(page: Page, name: string): Promise<void> {
   await page.goto('/aoba/admin');
   await page.getByRole('button', { name: 'ワークスペースを作る' }).first().click();
@@ -674,6 +676,8 @@ export async function createWorkspace(page: Page, name: string): Promise<void> {
   await expect(dialog.getByRole('combobox')).toBeEnabled();
   await dialog.getByLabel('名前').fill(name);
   await dialog.getByRole('button', { name: '作る' }).click();
+  await expect(dialog.getByRole('heading', { name: 'ワークスペースを作りました' })).toBeVisible();
+  await dialog.getByRole('button', { name: '開く' }).click();
   await expect(page).toHaveURL(/\/aoba\/w\/[0-9a-f-]{36}$/);
   // 見出しは画面の名前（バックログ）、小見出しがワークスペースの名前
   await expect(page.getByRole('heading', { level: 1, name: 'バックログ' })).toBeVisible();

@@ -180,6 +180,8 @@ export const dictionary = defineDictionary({
   workspaceSubmit: '作る',
   workspaceSubmitting: '作っています',
   workspaceCreated: '{workspace}を作りました',
+  workspaceCreateAnother: '続けて作る',
+  workspaceOpen: '開く',
   workspaceCreateFailed: '作れませんでした。もう一度試してください。',
   workspaceLeaderRejected: '選んだ人は、いま最初の{leader}に指せません。選び直してください。',
 
@@ -1828,6 +1830,9 @@ export const dictionary = defineDictionary({
   apiTokenLifetimeHint: '1〜{max}日。期限が来ると使えなくなります',
   apiTokenCreate: '発行する',
   apiTokenCreating: '発行しています',
+  apiTokenReauthRequired:
+    'API トークンを発行するには、ログインし直してください。発行はログインから{minutes}分以内に限られます。',
+  apiTokenReauth: 'ログインし直す',
   apiTokenNameRequired: '名前を入力してください',
   apiTokenNameTooLong: '名前は{max}文字までです',
   apiTokenLifetimeInvalid: '有効日数は1〜{max}の整数で入力してください',
@@ -1856,7 +1861,7 @@ export const dictionary = defineDictionary({
   apiTokenRevoked: '「{name}」を取り消しました',
   apiTokenRevokeFailed: '取り消せませんでした。時間をおいて、もう一度試してください',
   apiTokenEmptyTitle: '発行済みの API トークンはありません',
-  apiTokenEmptyText: '上のフォームで発行すると、ここに並びます。',
+  apiTokenEmptyText: '発行すると、ここに並びます。',
   apiTokenLoadFailed: 'API トークンを読み込めませんでした',
   xpLedgerFailedTitle: '経験値の明細を読み込めませんでした',
   xpLoadMore: '続きを読む',
@@ -1958,6 +1963,36 @@ export const dictionary = defineDictionary({
   repositoryHint: '複数のリポジトリにまたがる作業は、リポジトリごとに{task}を分けます。',
   categoryHasParent: '親のある{task}には{category}を振れません。親の{category}を引き継ぎます。',
   definitionRefGone: '選んだ{kind}は削除されています。選び直してください',
+
+  // タスクの決まった欄（#173。設定の節、引き出しの欄、未記入の印と件数）。リーダーが付けた欄の名前は辞書を通さず、そのまま出す
+  detailFieldKind: '決まった欄',
+  detailFieldsTitle: '{detail}の決まった欄',
+  detailFieldsDesc:
+    '{task}ごとに書いてほしい欄。名前は付けたままで、訳しません。完了していない{task}で書かれていない欄があるものには「{detail} 未記入」の印が付きます。',
+  detailFieldsLimitNote: '{kind}は {max} 件まで足せます（いま {count} 件）。',
+  detailFieldsLimitReached:
+    '{kind}は {max} 件に達しているため、これ以上は足せません。使わないものを削除すると足せます。',
+  detailFieldDeleteText:
+    '削除した欄は{task}の{detail}に出なくなり、「{detail} 未記入」の判定からも外れます。元には戻せません。',
+  unfilledChip: '{detail} 未記入',
+  unfilledMark: '未記入',
+  fieldValueEmpty: 'まだ書かれていません。',
+  // 決まった欄の「書く」ボタン。本文の「編集」と、読み上げの名前も文字も重ならないようにする
+  fieldValueWrite: '書く',
+  fieldValueRewrite: '書き直す',
+  fieldValueWriteLabel: '{field}を書く',
+  fieldValueRewriteLabel: '{field}を書き直す',
+  fieldValueChanged:
+    'ほかの人が先にこの欄を直しました。最新の内容を読み直しました。「取り消し」で最新の内容を見られます。もう一度保存すると、書いた内容で上書きします。',
+  fieldValueRefreshFailed:
+    'ほかの人が先にこの欄を直しましたが、最新の内容を読み直せませんでした。しばらくしてから、もう一度試してください。',
+  fieldValueGone: 'この欄は削除されています。画面を読み直します',
+  planUnfilled: '{detail} 未記入 {count} 件',
+  sprintTaskPickUnfilled: '（うち{detail} 未記入 {count} 件）',
+  sprintTaskPickRowUnfilled: '{detail} 未記入',
+  historyDetailWritten: '「{name}」を書いた',
+  historyDetailEdited: '「{name}」を直した',
+  historyDetailCleared: '「{name}」を空にした',
   // 木の行の区分とリポジトリの印。見えない文字で種類を添える
   chipPrefix: '{kind}：',
 
