@@ -12,6 +12,7 @@
     type WorkspaceNameProblem,
   } from '../../shared/workspace.ts';
   import { callOperation } from '../api.ts';
+  import { focusPageHeading } from '../focus-heading.ts';
   import { browserTimezone } from '../format.ts';
   import { t } from '../vocabulary.svelte.ts';
   import Dialog from './Dialog.svelte';
@@ -90,7 +91,13 @@
   $effect(() => {
     if (open || !needsRefresh) return;
     needsRefresh = false;
-    void invalidateAll().catch(() => undefined);
+    void invalidateAll()
+      .catch(() => undefined)
+      .then(() => {
+        // 読み直しで、閉じたときにフォーカスを戻した元のボタン（空の状態の「作る」）が消えると、フォーカスが body に落ちる。見出しへ移す
+        const active = document.activeElement;
+        if (active === null || active === document.body) focusPageHeading();
+      });
   });
 
   // 空の作成のフォームに戻す。開いたときと「続けて作る」が同じ状態から始める
