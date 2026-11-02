@@ -118,7 +118,8 @@ test('設定で欄を足す → 起票した行と見出しに未記入 → 引�
     '詳細 未記入',
   );
   await expect(unfilledTally(page)).toHaveText(/詳細 未記入\s*1/);
-  expect(await collect()).toEqual([]);
+  // 「同じ名前は断る」で起こした 409 だけが、ブラウザのコンソールに残る
+  expect(await collect()).toEqual(['Failed to load resource: the server responded with a status of 409 (Conflict)']);
 });
 
 test('同時に直されて断られると、書きかけを残したまま読み直しを促し、読み直した値で書き直せる', async ({ page }) => {
