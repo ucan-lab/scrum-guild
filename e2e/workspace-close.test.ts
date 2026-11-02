@@ -25,7 +25,7 @@ function runMark(): string {
   return `${test.info().repeatEachIndex}-${test.info().retry}`;
 }
 
-// 管理の画面から、自分をリーダーにワークスペースを作る。作ると、そのワークスペースの画面へ移る
+// 管理の画面から、自分をリーダーにワークスペースを作る。完了の表示で「開く」を押して、そのワークスペースの画面へ移る
 async function createWorkspace(page: Page, name: string): Promise<string> {
   await page.goto('/aoba/admin');
   await page.getByRole('button', { name: 'ワークスペースを作る' }).first().click();
@@ -33,6 +33,7 @@ async function createWorkspace(page: Page, name: string): Promise<string> {
   await expect(dialog.getByRole('combobox')).toBeEnabled();
   await dialog.getByLabel('名前').fill(name);
   await dialog.getByRole('button', { name: '作る' }).click();
+  await page.getByRole('dialog', { name: 'ワークスペースを作りました' }).getByRole('button', { name: '開く' }).click();
   await expect(page).toHaveURL(/\/aoba\/w\/[0-9a-f-]{36}$/);
   return page.url();
 }

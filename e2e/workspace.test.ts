@@ -1,8 +1,16 @@
 // ワークスペースの作成、組織の管理の画面、ワークスペースの枠。seed のセッション（seed/sessions.ts）の Cookie で開く。
 // あおば開発の管理者はミナト、一般のユーザーはハルカ。ひばり工房のワークスペースの ID は seed/data.sql の値
 import type { Page } from '@playwright/test';
+import { firstSteps } from '../src/shared/operations/organization/index.ts';
+import type { FirstStep } from '../src/shared/operations/organization/first-steps.ts';
 import { expect, test } from './fixtures.ts';
-import { signIn, watchViolations } from './helpers.ts';
+import { expectFocusReturned, signIn, watchViolations } from './helpers.ts';
+import { mockOperation } from './operations.ts';
+
+// この回の印。作る行の名前に混ぜる（作ったワークスペースは消せずに残るので、繰り返しとやり直しの回で名前を分ける）
+function runMark(): string {
+  return `${test.info().repeatEachIndex}-${test.info().retry}`;
+}
 
 // 管理の画面のワークスペースの一覧の行。変更の履歴の節もワークスペースの名前の行を持つので、節で絞る
 function workspaceRow(page: Page, name: string) {
@@ -44,7 +52,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     expect(await collect()).toEqual([]);
   });
 
-  test('自分をリーダーに作ると、そのワークスペースの画面へ移る。作成ダイアログに言葉づかいの選択は無い', async ({
+  test('自分をリーダーに作ると、完了の表示に替わり、「開く」でそのワークスペースの画面へ移る。作成ダイアログに言葉づかいの選択は無い', async ({
     page,
   }) => {
     const collect = await watchViolations(page);
@@ -63,7 +71,20 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await dialog.getByLabel('名前').fill('  保守チーム  ');
     await dialog.getByRole('button', { name: '作る' }).click();
 
+    // 閉じずに、同じダイアログが完了の表示に替わる。作った名前（前後の空白は除く）が読め、移らない。トーストは出さない
+    const done = page.getByRole('dialog', { name: 'ワークスペースを作りました' });
+    await expect(done).toBeVisible();
+    await expect(done.locator('.callout')).toHaveText('保守チーム');
+    await expect(done.getByRole('status')).toHaveText('ワークスペースを作りました');
+    await expect(done.getByRole('button', { name: '続けて作る' })).toBeVisible();
+    await expect(done.getByRole('button', { name: '開く' })).toBeFocused();
+    await expect(done.getByLabel('名前')).toHaveCount(0);
+    await expect(page).toHaveURL(/\/aoba\/admin$/);
+    await expect(page.locator('.toast')).toHaveCount(0);
+    await done.getByRole('button', { name: '開く' }).click();
+
     await expect(page).toHaveURL(/\/aoba\/w\/[0-9a-f-]{36}$/);
+    await expect(done).toBeHidden();
     // 見出しは画面の名前（バックログ）で、小見出しがワークスペースの名前
     await expect(page.getByRole('heading', { level: 1, name: 'バックログ' })).toBeVisible();
     await expect(page.locator('.page-eyebrow')).toHaveText('保守チーム');
@@ -74,8 +95,8 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(page.locator('.ws-menu > button')).toContainText('保守チーム');
     // 画面のある項目だけを出すので、ワークスペースの節と、メンバーを持つ管理の節
     await expect(page.locator('.nav-group')).toHaveText(['ワークスペース', '管理']);
-    // 画面にも起票のダイアログ（中に閉じた読み上げの領域がある）があるので、見える領域だけを role で引く
-    await expect(page.getByRole('status').filter({ hasText: 'ワークスペースを作りました' })).toBeVisible();
+    // 完了のダイアログが同じことを伝えるので、トーストは出さない
+    await expect(page.getByRole('status').filter({ hasText: 'ワークスペースを作りました' })).toHaveCount(0);
     expect(await collect()).toEqual([]);
 
     // 一覧に出て、リーダーが1人のメンバーが1人
@@ -97,6 +118,10 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await dialog.getByLabel('名前').fill('社内ツール改善');
     await dialog.getByRole('combobox').selectOption({ label: 'ハルカ' });
     await dialog.getByRole('button', { name: '作る' }).click();
+    await page
+      .getByRole('dialog', { name: 'ワークスペースを作りました' })
+      .getByRole('button', { name: '開く' })
+      .click();
 
     await expect(page).toHaveURL(/\/aoba\/w\/[0-9a-f-]{36}$/);
     await expect(page.getByRole('heading', { level: 1, name: 'バックログ' })).toBeVisible();
@@ -113,6 +138,111 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(page).toHaveURL(/\/aoba\/admin$/);
     await expect(page.getByRole('button', { name: 'ワークスペースを作る' }).first()).toBeVisible();
     await expect(page.locator('.topbar .chip')).toHaveCount(1);
+  });
+
+  test('完了の表示の「続けて作る」で、名前が空でリーダーが自分に戻った作成のフォームになり、名前の欄にフォーカスが移る', async ({
+    page,
+  }) => {
+    const mark = runMark();
+    await page.goto('/aoba/admin');
+    await page.getByRole('button', { name: 'ワークスペースを作る' }).first().click();
+    const form = page.getByRole('dialog', { name: 'ワークスペースを作る' });
+    await expect(form.getByRole('combobox')).toBeEnabled();
+    await form.getByLabel('名前').fill(`続けて作る一つ目 ${mark}`);
+    await form.getByRole('combobox').selectOption({ label: 'ハルカ' });
+    await form.getByRole('button', { name: '作る' }).click();
+
+    const done = page.getByRole('dialog', { name: 'ワークスペースを作りました' });
+    await expect(done.locator('.callout')).toHaveText(`続けて作る一つ目 ${mark}`);
+    await done.getByRole('button', { name: '続けて作る' }).click();
+
+    // 閉じずに作成のフォームへ戻る。名前は空、リーダーは候補を取り直して自分、フォーカスは名前の欄
+    await expect(form).toBeVisible();
+    await expect(form.getByLabel('名前')).toHaveValue('');
+    await expect(form.getByLabel('名前')).toBeFocused();
+    await expect(form.getByRole('combobox')).toBeEnabled();
+    await expect(form.getByRole('combobox').locator('option:checked')).toHaveText('ミナト');
+    await expect(form.getByRole('alert')).toHaveCount(0);
+    await expect(page).toHaveURL(/\/aoba\/admin$/);
+
+    // そのまま2つ目を作れる。作った2つは、閉じた後の一覧に出る
+    await form.getByLabel('名前').fill(`続けて作る二つ目 ${mark}`);
+    await form.getByRole('button', { name: '作る' }).click();
+    await expect(done.locator('.callout')).toHaveText(`続けて作る二つ目 ${mark}`);
+    await done.getByRole('button', { name: '閉じる' }).click();
+    await expect(done).toBeHidden();
+    await expect(workspaceRow(page, `続けて作る一つ目 ${mark}`)).toBeVisible();
+    await expect(workspaceRow(page, `続けて作る二つ目 ${mark}`)).toBeVisible();
+  });
+
+  test('完了の表示を×、Esc で閉じると、今の画面に残り、作ったワークスペースが一覧に出ている。開き直すと空のフォーム', async ({
+    page,
+  }) => {
+    const mark = runMark();
+    await page.goto('/aoba/admin');
+    const opener = page.getByRole('button', { name: 'ワークスペースを作る' }).first();
+    const done = page.getByRole('dialog', { name: 'ワークスペースを作りました' });
+    const form = page.getByRole('dialog', { name: 'ワークスペースを作る' });
+
+    for (const how of ['×', 'Esc']) {
+      const name = `閉じて残る${how} ${mark}`;
+      await opener.click();
+      await expect(form.getByRole('combobox')).toBeEnabled();
+      // 2回目は、前に作った名前が残っていない空のフォームから始まる
+      await expect(form.getByLabel('名前')).toHaveValue('');
+      await form.getByLabel('名前').fill(name);
+      await form.getByRole('button', { name: '作る' }).click();
+      await expect(done).toBeVisible();
+      if (how === '×') await done.getByRole('button', { name: '閉じる' }).click();
+      else await page.keyboard.press('Escape');
+      await expect(done).toBeHidden();
+      await expect(page).toHaveURL(/\/aoba\/admin$/);
+      await expectFocusReturned(page, opener);
+      // 作ったワークスペースは一覧に出ている
+      await expect(workspaceRow(page, name)).toBeVisible();
+    }
+  });
+
+  test('今日やること（最初にやることの面）から作っても、同じ完了の表示になり、「続けて作る」「開く」が効く', async ({
+    page,
+  }) => {
+    const mark = runMark();
+    const admin = (key: FirstStep['key'], done: boolean, optional = false): FirstStep => ({
+      key,
+      done,
+      optional,
+      workspace: null,
+    });
+    await mockOperation(
+      page,
+      firstSteps,
+      { slug: 'aoba' },
+      {
+        role: 'admin',
+        steps: [admin('became_admin', true), admin('create_workspace', false), admin('register_holiday', false, true)],
+      },
+    );
+    await page.goto('/aoba');
+    const start = page.getByRole('region', { name: '最初にやること', exact: true });
+    await start.getByRole('button', { name: 'ワークスペースを作る' }).click();
+    const form = page.getByRole('dialog', { name: 'ワークスペースを作る' });
+    await expect(form.getByRole('combobox')).toBeEnabled();
+    await form.getByLabel('名前').fill(`今日から作る ${mark}`);
+    await form.getByRole('button', { name: '作る' }).click();
+
+    const done = page.getByRole('dialog', { name: 'ワークスペースを作りました' });
+    await expect(done.locator('.callout')).toHaveText(`今日から作る ${mark}`);
+    await expect(page).toHaveURL(/\/aoba$/);
+    await done.getByRole('button', { name: '続けて作る' }).click();
+    await expect(form.getByLabel('名前')).toHaveValue('');
+    await expect(form.getByLabel('名前')).toBeFocused();
+
+    await form.getByLabel('名前').fill(`今日から開く ${mark}`);
+    await form.getByRole('button', { name: '作る' }).click();
+    await done.getByRole('button', { name: '開く' }).click();
+    await expect(page).toHaveURL(/\/aoba\/w\/[0-9a-f-]{36}$/);
+    await expect(page.locator('.page-eyebrow')).toHaveText(`今日から開く ${mark}`);
+    await expect(page.getByRole('heading', { level: 1, name: 'バックログ' })).toBeFocused();
   });
 
   test('名前が空か51字以上だと、送らずに知らせる', async ({ page }) => {
@@ -190,7 +320,9 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(dialog.getByLabel('最初のリーダー')).toBeDisabled();
     await expect(dialog.locator('form [role="status"]')).toHaveCount(0);
 
-    await expect(page).toHaveURL(/\/aoba\/w\/[0-9a-f-]{36}$/);
+    // 送り終えたら完了の表示に替わる。1回しか送っていない
+    await expect(page.getByRole('dialog', { name: 'ワークスペースを作りました' })).toBeVisible();
+    await expect(page).toHaveURL(/\/aoba\/admin$/);
     expect(requests).toBe(1);
   });
 
@@ -259,16 +391,18 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(dialog.getByText('選べる人を読み込めませんでした')).toHaveCount(1);
   });
 
-  test('作れたのに組織の枠の読み直しが失敗しても、作ったワークスペースの画面へ移る', async ({ page }) => {
+  test('作れたのに組織の枠の読み直しが失敗しても、完了の表示は出す（読み直しの結果を待たない）', async ({ page }) => {
     let created = false;
     await page.route('**/api/aoba/workspace-create', async (route) => {
       await route.continue();
       created = true;
     });
-    // 作った後の組織の枠の読み直しだけを失敗させる
-    await page.route('**/api/aoba/organization', (route) =>
-      created ? route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }) : route.continue(),
-    );
+    // 作った後の組織の枠の読み直しだけを、少し遅らせて失敗させる。失敗すると組織の枠は読み込めなかった画面に替わる
+    await page.route('**/api/aoba/organization', async (route) => {
+      if (!created) return route.continue();
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      return route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } });
+    });
     await page.goto('/aoba/admin');
     await page.getByRole('button', { name: 'ワークスペースを作る' }).first().click();
     const dialog = page.getByRole('dialog', { name: 'ワークスペースを作る' });
@@ -276,7 +410,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await dialog.getByLabel('名前').fill('読み直しに失敗');
     await dialog.getByRole('button', { name: '作る' }).click();
 
-    await expect(page).toHaveURL(/\/aoba\/w\/[0-9a-f-]{36}$/);
+    await expect(page.getByRole('dialog', { name: 'ワークスペースを作りました' })).toBeVisible();
     await expect(page.getByRole('heading', { level: 1, name: '読み込めませんでした' })).toBeVisible();
   });
 

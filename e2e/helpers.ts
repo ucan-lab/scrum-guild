@@ -666,7 +666,7 @@ export async function mockSeedAdminLists(page: Page): Promise<void> {
   );
 }
 
-// 管理の画面から、自分をリーダーにワークスペースを作り、その画面へ移る（admin でログインしている前提）
+// 管理の画面から、自分をリーダーにワークスペースを作り、完了の表示で「開く」を押してその画面へ移る（admin でログインしている前提）
 export async function createWorkspace(page: Page, name: string): Promise<void> {
   await page.goto('/aoba/admin');
   await page.getByRole('button', { name: 'ワークスペースを作る' }).first().click();
@@ -674,6 +674,8 @@ export async function createWorkspace(page: Page, name: string): Promise<void> {
   await expect(dialog.getByRole('combobox')).toBeEnabled();
   await dialog.getByLabel('名前').fill(name);
   await dialog.getByRole('button', { name: '作る' }).click();
+  await expect(dialog.getByRole('heading', { name: 'ワークスペースを作りました' })).toBeVisible();
+  await dialog.getByRole('button', { name: '開く' }).click();
   await expect(page).toHaveURL(/\/aoba\/w\/[0-9a-f-]{36}$/);
   // 見出しは画面の名前（バックログ）、小見出しがワークスペースの名前
   await expect(page.getByRole('heading', { level: 1, name: 'バックログ' })).toBeVisible();

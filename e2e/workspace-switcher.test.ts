@@ -31,6 +31,7 @@ test('一般のメンバーが別の所属先を選ぶと、終了したワー�
   await dialog.getByRole('combobox').selectOption({ label: 'ハルカ' });
   await dialog.getByLabel('名前').fill(name);
   await dialog.getByRole('button', { name: '作る' }).click();
+  await page.getByRole('dialog', { name: 'ワークスペースを作りました' }).getByRole('button', { name: '開く' }).click();
   await expect(page).toHaveURL(/\/aoba\/w\/[0-9a-f-]{36}$/);
   const target = new URL(page.url()).pathname;
 
