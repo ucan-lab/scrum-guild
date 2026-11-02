@@ -39,7 +39,7 @@ labels: []
 
 ## 触る領域
 
-<!-- area: のラベルを付ける。人が差分を読む領域（docs/development.md の「マージの判定」。マイグレーション、認証、組織で絞る層、運用者の権限、取り込み、wrangler の設定、デプロイのスクリプト、依存、lint の設定、.github/、.claude/ の下。ただし ai-review のほかのスキルとチェックリストの .md は除く）に触るなら needs-human も付ける。PR には CI の label が付ける -->
+<!-- area: のラベルを付ける。人が差分を読む領域（docs/development.md の「マージの判定」。マイグレーション、認証、組織で絞る層、運用者の権限、取り込み、wrangler の設定、デプロイのスクリプト、依存、lint の設定、.github/、.claude/ の下（スキルとチェックリストの .md も含む）、CLAUDE.md、AGENTS.md、docs/development.md、src/lib/legal/）に触るなら needs-human も付ける。PR には CI の label が付ける -->
 
 ## マイグレーション
 

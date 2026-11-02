@@ -68,11 +68,13 @@ describe('needs-human の .claude/ の規則', () => {
     }
   });
 
-  test('スキルの .md と CLAUDE.md は守る（セッションが人に聞かずにマージするため）', () => {
+  test('スキルとチェックリストの .md と CLAUDE.md は守る（セッションが人に聞かずにマージするため）', () => {
     for (const path of [
       '.claude/skills/retro/SKILL.md',
       '.claude/skills/pr-feedback/SKILL.md',
       '.claude/skills/pr-create/github-mcp.md',
+      '.claude/checklists/multi-tenant.md',
+      '.claude/checklists/languages/typescript.md',
       'CLAUDE.md',
       'src/CLAUDE.md',
     ]) {
@@ -80,9 +82,27 @@ describe('needs-human の .claude/ の規則', () => {
     }
   });
 
-  test('チェックリストの .md は守らない', () => {
-    for (const path of ['.claude/checklists/multi-tenant.md', '.claude/checklists/languages/typescript.md']) {
-      assert.equal(needsHuman(path), false, path);
+  test('Claude と Codex の決まりのパスは、大文字小文字だけ違っても守る（macOS の clone で上書きされるため）', () => {
+    for (const path of [
+      'Claude.md',
+      'claude.md',
+      'src/claude.md',
+      '.Claude/skills/evil/SKILL.md',
+      '.CLAUDE/settings.local.json',
+      'src/.Claude/run.py',
+      'Agents.md',
+      'agents.MD',
+      'AGENTS.OVERRIDE.md',
+      '.Agents/skills/x/SKILL.md',
+      '.Codex/config.toml',
+    ]) {
+      assert.equal(needsHuman(path), true, path);
+    }
+  });
+
+  test('マージの判定の本文と、本番に出る利用規約とプライバシーポリシーは守る', () => {
+    for (const path of ['docs/development.md', 'src/lib/legal/terms.md', 'src/lib/legal/privacy.md']) {
+      assert.equal(needsHuman(path), true, path);
     }
   });
 
@@ -110,7 +130,7 @@ describe('needs-human の .claude/ の規則', () => {
   });
 
   test('.claude/ の外の文書は守らない', () => {
-    for (const path of ['docs/development.md', 'README.md']) {
+    for (const path of ['docs/requirements.md', 'README.md']) {
       assert.equal(needsHuman(path), false, path);
     }
   });
