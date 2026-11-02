@@ -413,13 +413,53 @@ test.describe('管理者（あおば開発のミナト）', () => {
 
     const done = page.getByRole('dialog', { name: 'ワークスペースを作りました' });
     await expect(done).toBeVisible();
-    // 一覧だけは作れた時点で読み直す。組織の枠は、完了の表示を閉じるまで読み直さない
+    // 一覧だけは作れた時点で読み直す（一覧の行が出たら、作れた直後の読み直しは終わっている）。組織の枠は、完了の表示を閉じるまで読み直さない
     await expect(page.locator('tbody tr', { hasText: '読み直しは閉じた後' })).toHaveCount(1);
     expect(organizationReads).toBe(0);
 
+    // 「続けて作る」で作成のフォームに戻っても、まだ読み直さない。2つ目を作って閉じると、1回だけ読み直す
+    await done.getByRole('button', { name: '続けて作る' }).click();
+    const again = page.getByRole('dialog', { name: 'ワークスペースを作る' });
+    await expect(again.getByRole('combobox')).toBeEnabled();
+    await again.getByLabel('名前').fill('読み直しは閉じた後 その2');
+    await again.getByRole('button', { name: '作る' }).click();
+    await expect(page.getByRole('dialog', { name: 'ワークスペースを作りました' })).toBeVisible();
+    expect(organizationReads).toBe(0);
+
     await page.keyboard.press('Escape');
-    await expect(done).toBeHidden();
+    await expect(page.getByRole('dialog')).toBeHidden();
     await expect.poll(() => organizationReads).toBe(1);
+    // 読み直しが終わっても、元のボタンが残っていればフォーカスは戻したまま、失われていれば見出しにある（body には落ちない）
+    await expect(page.locator('body')).not.toBeFocused();
+  });
+
+  test('「開く」で作ったワークスペースへ移り、組織の枠も読み直される', async ({ page }) => {
+    let created = false;
+    let organizationReads = 0;
+    await page.route('**/api/aoba/workspace-create', async (route) => {
+      await route.continue();
+      created = true;
+    });
+    await page.route('**/api/aoba/organization', async (route) => {
+      if (created) organizationReads++;
+      return route.continue();
+    });
+    await page.goto('/aoba/admin');
+    await page.getByRole('button', { name: 'ワークスペースを作る' }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'ワークスペースを作る' });
+    await expect(dialog.getByRole('combobox')).toBeEnabled();
+    await dialog.getByLabel('名前').fill('開いて移る');
+    await dialog.getByRole('button', { name: '作る' }).click();
+    await page
+      .getByRole('dialog', { name: 'ワークスペースを作りました' })
+      .getByRole('button', { name: '開く' })
+      .click();
+
+    await expect(page).toHaveURL(/\/aoba\/w\/[0-9a-f-]{36}$/);
+    await expect(page.locator('.page-eyebrow')).toHaveText('開いて移る');
+    // 移る動作が組織の枠を読み直す（所属するワークスペースにも入っているので、メニューに出る）
+    expect(organizationReads).toBeGreaterThanOrEqual(1);
+    await expect(page.locator('.ws-menu > button')).toContainText('開いて移る');
   });
 
   test('選んだ最初のリーダーが指せなくなっていて 404 になったら、選び直しを促し、候補を取り直す', async ({ page }) => {
