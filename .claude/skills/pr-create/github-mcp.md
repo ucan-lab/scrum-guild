@@ -25,5 +25,5 @@
 - 一覧を返すツール（`list_issues`、`pull_request_read` の `get_files` など）は1ページで切れる。`perPage` を 100 にし、`after` か `page` で最後まで送る（`gh` の `--paginate` と同じく、取りこぼすと Issue の組分けや `migrations/` の重なりの確かめを誤る）
 - `issue_read` は前に要るものの数（REST の `issue_dependencies_summary`）を返さない。`issue_dependency_read` と `issue_dependency_write` は GitHub の MCP サーバーの機能の切り替えの後ろにあり、出ないことがあり、README に引数の説明が無い。出たら ToolSearch で出た定義に従い、Issue を番号で指すか `id` で指すかと、読んだ依存が開いているかを確かめてから使う。`.claude/settings.json` の許可に無いので、呼ぶと確認が挟まる。出ないときに依存関係だけを正とするスキル（`sprint-pick`、`backlog-add` の登録）は、本文の表から読んで代えずに止まり、依存の確認か付け外しを人に頼む
 - `pull_request_read` の `get` が `merged_at` と `merge_commit_sha` を返さなければ、`d1-migration` の縮める変更の確かめは止まり、人に頼む
-- マージは MCP ツールで代えない（`gh pr merge --match-head-commit` とフックの確認を通らないため）。人に任せる
+- マージは MCP ツールで代えない（`gh pr merge --match-head-commit` とフックの拒否の規則、`pr-feedback` の `needs-human` の確かめを通らないため）。人に任せる
 - 表に無い操作は、ToolSearch で `mcp__github__` を引いて近いツールを探す。MCP ツールも無ければ push までで止め、PR の作成を人に頼む

@@ -54,15 +54,20 @@ needs-human:
           - ".claude/agents/**"
           - ".mcp.json"
           # Codex のエージェントと設定（sandbox とネットワークを変えられる）、Codex が読む決まりとスキル
-          # （入れ子の AGENTS.md と、AGENTS.md より先に読まれる AGENTS.override.md も含む）
-          - "**/.codex/**"
-          - "**/.agents/**"
-          - "**/AGENTS.md"
-          - "**/AGENTS.override.md"
-  # .claude/ の下のファイル（CI が書き込みのトークンを持って走らせるスクリプトを含む。入れ子の .claude/ も）。
-  # スキルとチェックリストの .md だけを外す（ai-review のスキルは上の規則が守る。理由は docs/development.md の「マージの判定」）。
+          # （入れ子の AGENTS.md と、AGENTS.md より先に読まれる AGENTS.override.md も含む）。
+          # macOS の clone は大文字小文字を区別しないので、Claude と Codex の決まりのパスは大文字小文字によらずに拾う
+          # （Claude.md が CLAUDE.md に、.Agents/ が .agents/ に入り込む。評価は scripts/labeler.test.ts）
+          - "**/.[Cc][Oo][Dd][Ee][Xx]/**"
+          - "**/.[Aa][Gg][Ee][Nn][Tt][Ss]/**"
+          - "**/[Aa][Gg][Ee][Nn][Tt][Ss].[Mm][Dd]"
+          - "**/[Aa][Gg][Ee][Nn][Tt][Ss].[Oo][Vv][Ee][Rr][Rr][Ii][Dd][Ee].[Mm][Dd]"
+          # Claude が読む決まり。マージの判定を担うスキルと同じく、セッションが人に聞かずにマージするので人が差分を読む
+          - "**/[Cc][Ll][Aa][Uu][Dd][Ee].[Mm][Dd]"
+          # マージの判定の本文と、本番に出る利用規約とプライバシーポリシー。.md だけの PR には ai-review が走らず、人が読まなければ誰も確かめない
+          - "docs/development.md"
+          - "src/lib/legal/**"
+  # .claude/ の下のファイル（CI が書き込みのトークンを持って走らせるスクリプトと、スキルとチェックリストの .md も含む。入れ子の .claude/ も）。
   # 評価は scripts/labeler.test.ts で確かめる
   - changed-files:
-      - all-globs-to-any-file:
-          - "**/.claude/**"
-          - "!.claude/{skills,checklists}/**/*.md"
+      - any-glob-to-any-file:
+          - "**/.[Cc][Ll][Aa][Uu][Dd][Ee]/**"
