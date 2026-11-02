@@ -28,6 +28,8 @@ export type Defer = (task: () => Promise<unknown>) => void;
 export type CurrentSession = {
   // sessions.token_hash
   readonly tokenHash: string;
+  // sessions.created_at
+  readonly createdAt: string;
   // 応答でセッションの Cookie を消す。行を消した後に呼ぶ
   clearCookie(): void;
 };

@@ -207,10 +207,10 @@ test('一覧が空なら空の状態を出し、読めなければこの節に�
   page,
 }) => {
   const section = sectionOf(page);
-  const unrouteEmpty = await mockOperation(page, tokenList, { tokens: [] });
+  const unrouteEmpty = await mockOperation(page, tokenList, { tokens: [], can_create: true });
   await page.goto('/aoba/me');
   await expect(section.getByText('発行済みの API トークンはありません')).toBeVisible();
-  await expect(section.getByText('上のフォームで発行すると、ここに並びます。')).toBeVisible();
+  await expect(section.getByText('発行すると、ここに並びます。')).toBeVisible();
   await expect(section.getByRole('table')).toHaveCount(0);
   await unrouteEmpty();
 

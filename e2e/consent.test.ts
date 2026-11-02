@@ -167,9 +167,12 @@ test.describe('本物の API', () => {
       const submit = page.getByRole('button', { name: '同意して進む' });
       const sheet = page.locator('.gate-sheet');
       await expect(checkbox).toBeVisible();
+      // 字形の読み込みの前後で折り返しが変わると、印と関係なく高さが動く。測る前に待つ
+      await page.evaluate(() => document.fonts.ready);
       const before = { sheet: await sheet.boundingBox(), submit: await submit.boundingBox() };
       await checkbox.check();
       await expect(submit).toHaveAttribute('aria-disabled', 'false');
+      await page.evaluate(() => document.fonts.ready);
       const after = { sheet: await sheet.boundingBox(), submit: await submit.boundingBox() };
       expect(after.sheet?.height).toBe(before.sheet?.height);
       expect(after.submit?.y).toBe(before.submit?.y);

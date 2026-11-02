@@ -128,7 +128,8 @@ export async function createSession(accountId: string, overrides: Partial<Row<Co
   const row: Row<CommonTables, 'sessions'> = {
     token_hash: hash64(),
     account_id: accountId,
-    created_at: AT,
+    // token-create はログインから10分以内のセッションだけ通す。固定の過去の日時だと、既定のセッションが発行を断られる
+    created_at: new Date().toISOString(),
     last_used_at: AT,
     expires_at: '2026-11-19T00:00:00.000Z',
     ...overrides,

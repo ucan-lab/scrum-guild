@@ -8,5 +8,8 @@ export const API_TOKEN_MAX_LIFETIME_DAYS = 90;
 export const API_TOKEN_MAX_ACTIVE = 20;
 export const API_TOKEN_LIMIT_REASON = 'limit';
 
+// API トークンの発行は、ログイン（sessions.created_at）からこの分数以内のセッションに限る。ちょうどこの分数は通す
+export const API_TOKEN_REAUTH_MINUTES = 10;
+
 // read は mode が read の操作だけ、write は read と write の操作を呼べる
 export type ApiTokenScope = 'read' | 'write';
