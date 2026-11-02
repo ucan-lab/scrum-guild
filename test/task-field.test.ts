@@ -440,8 +440,12 @@ describe('未記入の判定', () => {
       is_imported: 1,
       tray: 'inbox',
     });
-    const detail = await call<{ unfilled: boolean }>(taskDetail, target, { task_id: inbox.id });
+    const detail = await call<{ unfilled: boolean; in_backlog: boolean }>(taskDetail, target, { task_id: inbox.id });
     expect(detail.body.unfilled).toBe(false);
+    // 引き出しの欄ごとの印も同じ範囲で決めるので、バックログのタスクかを返す
+    expect(detail.body.in_backlog).toBe(false);
+    const backlogDetail = await call<{ in_backlog: boolean }>(taskDetail, target, { task_id: task.id });
+    expect(backlogDetail.body.in_backlog).toBe(true);
     // 受信箱のタスクにも書けるが、そのタスクは未記入にならない
     const set = await setField(target, inbox.id, criteria.id, '受信箱で書いた', null);
     expect(set.status).toBe(200);

@@ -229,6 +229,7 @@ export const taskDetailOperation = implement(taskDetail, async ({ db, actor, wor
     task: await detailOf(db, task, actor, workspace),
     fields,
     unfilled: task.tray === 'backlog' && task.completed_at === null && fields.some((field) => field.value_md === null),
+    in_backlog: task.tray === 'backlog',
     today: todayIn(settings.timezone),
     week_start: settings.week_start,
   };

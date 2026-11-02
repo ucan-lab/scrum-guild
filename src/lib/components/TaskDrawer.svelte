@@ -165,6 +165,8 @@
   let clock = $state<{ today: string; weekStart: number } | null>(null);
   // 削除していない決まった欄と値（task-detail の fields。書かれていなければ value_md が null）
   let fields = $state<TaskFieldValue[]>([]);
+  // バックログのタスクか。受信箱とアーカイブのタスクには、欄ごとの「未記入」の印を出さない（木の行と件数と同じ範囲）
+  let inBacklog = $state(false);
   let heading = $state<HTMLElement>();
   let retryButton = $state<HTMLButtonElement>();
   let discardDialog = $state<ReturnType<typeof ConfirmDialog>>();
@@ -439,6 +441,7 @@
     if (result.ok) {
       task = result.data.task;
       fields = result.data.fields;
+      inBacklog = result.data.in_backlog;
       clock = { today: result.data.today, weekStart: result.data.week_start };
       loadState = 'ready';
       void loadHistory();
@@ -649,6 +652,7 @@
     if (alive) {
       task = result.data.task;
       fields = result.data.fields;
+      inBacklog = result.data.in_backlog;
       clock = { today: result.data.today, weekStart: result.data.week_start };
       if (canWrite && task.completed_at === null && candidates === null) void loadCandidates();
       // 別の人の変更を読み直したので、その変更が載った履歴も読み直す
@@ -687,6 +691,7 @@
     if (alive) {
       task = latest.data.task;
       fields = latest.data.fields;
+      inBacklog = latest.data.in_backlog;
     }
     const removed = !latest.data.fields.some((field) => field.id === fieldId);
     if (removed) showToast(t('fieldValueGone'), 'alert');
@@ -1723,7 +1728,7 @@
       {workspaceId}
       {taskId}
       {fields}
-      completed={task.completed_at !== null}
+      marksUnfilled={inBacklog && task.completed_at === null}
       {canWrite}
       onsaved={fieldSaved}
       onrefresh={async () => (await refresh()) !== null}

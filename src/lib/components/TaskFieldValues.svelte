@@ -20,7 +20,7 @@
     workspaceId,
     taskId,
     fields,
-    completed,
+    marksUnfilled,
     canWrite,
     onsaved,
     onrefresh,
@@ -32,8 +32,8 @@
     workspaceId: string;
     taskId: string;
     fields: readonly TaskFieldValue[];
-    // 完了したタスクは、値が無くても未記入の印を出さない
-    completed: boolean;
+    // 値が無い欄に「未記入」の印を出すか。完了したタスクと、バックログでない（受信箱とアーカイブの）タスクには出さない
+    marksUnfilled: boolean;
     canWrite: boolean;
     // 書けた。応答の欄を引き出しの状態に入れ、変更の履歴と木を読み直してもらう
     onsaved: (field: TaskFieldValue) => void;
@@ -120,7 +120,7 @@
   <span class="field-label">
     <Icon name="pen" />
     {field.name}
-    {#if field.value_md === null && !completed}<span class="chip is-todo">{t('unfilledMark')}</span>{/if}
+    {#if field.value_md === null && marksUnfilled}<span class="chip is-todo">{t('unfilledMark')}</span>{/if}
   </span>
 {/snippet}
 

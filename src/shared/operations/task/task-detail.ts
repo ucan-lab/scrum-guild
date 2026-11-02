@@ -22,6 +22,8 @@ export const taskDetail = defineOperation({
     task: taskDetailSchema,
     fields: z.array(taskFieldValueSchema),
     unfilled: z.boolean(),
+    // バックログのタスクか（受信箱とアーカイブでは偽）。欄ごとの「未記入」の印は、バックログで完了していないタスクだけに出す
+    in_backlog: z.boolean(),
     today: z.string(),
     week_start: z.number().int().min(0).max(6),
   }),
