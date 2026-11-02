@@ -68,6 +68,7 @@
   const ids = $props.id();
   const newId = `${ids}-new`;
   const newErrorId = `${ids}-new-error`;
+  const limitNoteId = `${ids}-limit`;
 
   const kindWord = $derived(
     kind === 'category' ? t('category') : kind === 'repository' ? t('repository') : t('detailFieldKind'),
@@ -444,7 +445,9 @@
           readonly={busy}
           autocomplete="off"
           aria-invalid={addError !== null}
-          aria-describedby={addError !== null ? newErrorId : undefined}
+          aria-describedby={[addError !== null ? newErrorId : null, kind === 'field' ? limitNoteId : null]
+            .filter((id) => id !== null)
+            .join(' ') || undefined}
         />
         <button class="btn" type="submit" aria-disabled={busy}>
           <Icon name="plus" />{t('definitionAdd', { kind: kindWord })}
@@ -455,7 +458,10 @@
       {/if}
       <!-- 決まった欄の上限は、押す前に文で示す（超えると足せない） -->
       {#if kind === 'field'}
-        <span class="field-hint">{t('detailFieldsLimitNote', { kind: kindWord, count: items.length, max: limit })}</span
+        <span class="field-hint" id={limitNoteId}
+          >{items.length >= limit
+            ? t('detailFieldsLimitReached', { kind: kindWord, max: limit })
+            : t('detailFieldsLimitNote', { kind: kindWord, count: items.length, max: limit })}</span
         >
       {/if}
     </form>

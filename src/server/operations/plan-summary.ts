@@ -135,6 +135,8 @@ export const planSummaryOperation = implement(planSummary, async ({ db, workspac
                   eb.and([
                     eb('tasks.id', 'is not', null),
                     eb('tasks.completed_at', 'is', null),
+                    // スプリントに入るタスクは常にバックログ（tasks の CHECK）。印と件数の範囲をそろえるため、明示する
+                    eb('tasks.tray', '=', 'backlog'),
                     unfilledExists(eb, workspaceId),
                   ]),
                 )

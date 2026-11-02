@@ -669,8 +669,10 @@
     onchanged();
   }
 
-  // 欄かタスクが見つからなかった。読み直して、タスクが消えていれば閉じる。欄だけが削除されていたら、欄の一覧から外れる
-  async function fieldMissing(): Promise<void> {
+  // 欄かタスクが見つからなかった。読み直して、タスクが消えていれば閉じる。欄だけが削除されていたら、欄の一覧から外れ、入力欄ごと
+  // 書きかけが消えるので、トーストで知らせる（理由の文が入力欄と一緒に消えるため）。読み直せなかったときは削除されたと言い切らず、
+  // false を返す（呼んだ側がふつうの失敗の文を出す）。欄が一覧から外れたことを確かめられたら true
+  async function fieldMissing(fieldId: string): Promise<boolean> {
     const latest = await callOperation(taskDetail, { workspace_id: workspaceId, task_id: taskId }, { slug });
     if (!latest.ok && latest.status === 404) {
       taskGone = true;
@@ -679,12 +681,16 @@
         showToast(t('taskGone', { task: t('task') }), 'alert');
         onchanged();
       }
-      return;
+      return false;
     }
-    if (latest.ok && alive) {
+    if (!latest.ok) return false;
+    if (alive) {
       task = latest.data.task;
       fields = latest.data.fields;
     }
+    const removed = !latest.data.fields.some((field) => field.id === fieldId);
+    if (removed) showToast(t('fieldValueGone'), 'alert');
+    return removed;
   }
 
   // ---- 担当（選んで少し待ってから、か欄を離れたときに保存する。1本ずつ送る） ----
@@ -1720,7 +1726,7 @@
       completed={task.completed_at !== null}
       {canWrite}
       onsaved={fieldSaved}
-      onrefresh={async () => void (await refresh())}
+      onrefresh={async () => (await refresh()) !== null}
       onmissing={fieldMissing}
       {onstale}
       ondirty={(value) => (dirty.fields = value)}

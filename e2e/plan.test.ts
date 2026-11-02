@@ -164,7 +164,7 @@ test('スクラムの言葉: ストーリーごとと1件ずつ入れ、外し�
   await expect(list.getByRole('checkbox')).toHaveCount(2);
   await story.check();
   // 新しいワークスペースの決まった欄は書かれていないので、選んだ件数に未記入の件数が添う
-  await expect(picker.locator('.pick-count')).toHaveText(/^1 件を選んでいます\s*（うち詳細未記入 1 件）$/);
+  await expect(picker.locator('.pick-count')).toHaveText(/^1 件を選んでいます\s*（うち詳細 未記入 1 件）$/);
   await search.fill('');
   await expect(send).toBeChecked();
   await expect(form).not.toBeChecked();
@@ -191,7 +191,7 @@ test('スクラムの言葉: ストーリーごとと1件ずつ入れ、外し�
   await picker.getByRole('searchbox', { name: 'タスクとストーリーのタイトルで絞る' }).fill('ヘルプ');
   await expect(list.getByRole('checkbox')).toHaveCount(1);
   await list.getByRole('checkbox', { name: /^ヘルプを書く/ }).check();
-  await expect(picker.locator('.pick-count')).toHaveText(/^3 件を選んでいます\s*（うち詳細未記入 3 件）$/);
+  await expect(picker.locator('.pick-count')).toHaveText(/^3 件を選んでいます\s*（うち詳細 未記入 3 件）$/);
   await picker.getByRole('searchbox', { name: 'タスクとストーリーのタイトルで絞る' }).fill('');
   await picker.getByRole('button', { name: '3 件入れる' }).click();
   await expect(picker).toBeHidden();

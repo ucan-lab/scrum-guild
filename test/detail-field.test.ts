@@ -130,6 +130,18 @@ describe('detail-field-create と一覧', () => {
     expect(await list(target)).toHaveLength(DETAIL_FIELDS_PER_WORKSPACE);
   });
 
+  test('閉じたワークスペースへの操作は 409 の workspace_closed。一覧は読める', async () => {
+    const closed = await createTarget({ closed: true });
+    const field = await createDetailField(closed.organization, closed.workspace.id);
+    const created = await call<ErrorBody>(detailFieldCreate, closed, { name: '追加' });
+    expect(created.status).toBe(409);
+    expect(created.body.error.code).toBe('workspace_closed');
+    expect((await call(detailFieldUpdate, closed, { field_id: field.id, name: '改名' })).status).toBe(409);
+    expect((await call(detailFieldMove, closed, { field_id: field.id })).status).toBe(409);
+    expect((await call(detailFieldDelete, closed, { field_id: field.id })).status).toBe(409);
+    expect(await list(closed)).toEqual([{ id: field.id, name: field.name }]);
+  });
+
   test('名前が空、51 字、制御文字は 400', async () => {
     const target = await createTarget();
     for (const name of ['', '   ', 'あ'.repeat(51), '欄\u0000']) {

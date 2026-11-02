@@ -2,6 +2,7 @@
   import { taskFieldConflictReasonOf, taskFieldSet, type TaskFieldValue } from '../../shared/operations/task/index.ts';
   import { STORY_TEXT_MAX_LENGTH, longTextProblem, normalizeLongText } from '../../shared/story.ts';
   import { callOperation } from '../api.ts';
+  import { EditBases } from '../field-edit.ts';
   import { showToast } from '../toast.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
   import Icon from './Icon.svelte';
@@ -36,14 +37,18 @@
     canWrite: boolean;
     // 書けた。応答の欄を引き出しの状態に入れ、変更の履歴と木を読み直してもらう
     onsaved: (field: TaskFieldValue) => void;
-    // 今の値を読み直してもらう（409 の changed のとき）
-    onrefresh: () => Promise<void>;
-    // タスクか欄が見つからなかった（404）。引き出しが読み直し、タスクが消えていれば閉じる
-    onmissing: () => Promise<void>;
+    // 今の値を読み直してもらう（409 の changed のとき）。読み直せたら true
+    onrefresh: () => Promise<boolean>;
+    // タスクか欄が見つからなかった（404）。引き出しが読み直し、タスクが消えていれば閉じる。欄が一覧から外れたことを確かめられたら true
+    // （欄が無くなると書きかけの入力欄ごと消えるので、引き出しがトーストでも知らせる）
+    onmissing: (fieldId: string) => Promise<boolean>;
     // ワークスペースが閉じていた。枠ごと読み直してもらう
     onstale: () => void;
     ondirty: (dirty: boolean) => void;
   } = $props();
+
+  // 直し始めた時点の値（保存の読んだ値）
+  const bases = new EditBases();
 
   // 直している途中の欄の ID
   let dirtyIds = $state<string[]>([]);
@@ -66,20 +71,23 @@
   // 書く。成功は null、失敗はエラーの文
   async function save(field: TaskFieldValue, raw: string): Promise<string | null> {
     const next = normalizeLongText(raw);
-    if (next === field.value_md) return null;
+    // 読んだ値は、保存の時点の欄の値でなく、直し始めた時点の値（直している間に読み直しで別の人の値が入っても、黙って上書きしない）
+    const read = bases.readFor(field.id, field.value_md);
+    if (next === read) return null;
     const result = await callOperation(
       taskFieldSet,
-      { workspace_id: workspaceId, task_id: taskId, field_id: field.id, value_md: next, read_md: field.value_md },
+      { workspace_id: workspaceId, task_id: taskId, field_id: field.id, value_md: next, read_md: read },
       { slug },
     );
     if (result.ok) {
+      bases.finish(field.id);
       onsaved(result.data.field);
       showToast(t('taskSaved'), 'check');
       return null;
     }
     if (result.status === 404) {
-      await onmissing();
-      return t('fieldValueGone');
+      // 読み直して欄が一覧から外れていたときだけ、削除されたと言う（読み直せなかったときは言い切らない）
+      return (await onmissing(field.id)) ? t('fieldValueGone') : t('taskSaveFailed');
     }
     if (result.status === 401) {
       onstale();
@@ -90,7 +98,10 @@
       return t('workspaceClosedReadOnly', { workspace: t('workspace') });
     }
     if (result.status === 409 && taskFieldConflictReasonOf(result.error?.details) === 'changed') {
-      await onrefresh();
+      // 読み直せたら、読み直した値を次の読んだ値にする（読み直した内容を知らせた上で、もう一度保存すると上書きする）。
+      // 読み直せなかったときは、読んだ値を替えない（もう一度保存しても断られる）
+      if (!(await onrefresh())) return t('fieldValueRefreshFailed');
+      bases.rebase(field.id, fields.find((other) => other.id === field.id)?.value_md ?? null);
       return t('fieldValueChanged');
     }
     return result.status === 400 ? t('taskBadRequest') : t('taskSaveFailed');
@@ -125,6 +136,7 @@
         save={(raw) => save(field, raw)}
         normalize={(raw) => normalizeLongText(raw) ?? ''}
         ondirty={(dirty) => setDirty(field.id, dirty)}
+        onbegin={(started) => bases.begin(field.id, normalizeLongText(started))}
       >
         {#snippet view(begin)}
           <div class="field-head">

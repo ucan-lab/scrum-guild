@@ -1963,13 +1963,14 @@ export const dictionary = defineDictionary({
   detailFieldKind: '決まった欄',
   detailFieldsTitle: '{detail}の決まった欄',
   detailFieldsDesc:
-    '{task}ごとに書いてほしい欄。名前は付けたままで、訳しません。書かれていない{task}には「{detail} 未記入」の印が付きます。',
+    '{task}ごとに書いてほしい欄。名前は付けたままで、訳しません。完了していない{task}で書かれていない欄があるものには「{detail} 未記入」の印が付きます。',
   detailFieldsLimitNote: '{kind}は {max} 件まで足せます（いま {count} 件）。',
+  detailFieldsLimitReached:
+    '{kind}は {max} 件に達しているため、これ以上は足せません。使わないものを削除すると足せます。',
   detailFieldDeleteText:
     '削除した欄は{task}の{detail}に出なくなり、「{detail} 未記入」の判定からも外れます。元には戻せません。',
   unfilledChip: '{detail} 未記入',
   unfilledMark: '未記入',
-  unfilledChipLabel: '決まった欄が未記入の{task}',
   fieldValueEmpty: 'まだ書かれていません。',
   // 決まった欄の「書く」ボタン。本文の「編集」と、読み上げの名前も文字も重ならないようにする
   fieldValueWrite: '書く',
@@ -1977,11 +1978,13 @@ export const dictionary = defineDictionary({
   fieldValueWriteLabel: '{field}を書く',
   fieldValueRewriteLabel: '{field}を書き直す',
   fieldValueChanged:
-    'ほかの人が先にこの欄を直しました。最新の内容を読み直しました。「取り消し」で最新の内容を見られます。そのまま保存すると上書きします。',
+    'ほかの人が先にこの欄を直しました。最新の内容を読み直しました。「取り消し」で最新の内容を見られます。もう一度保存すると、書いた内容で上書きします。',
+  fieldValueRefreshFailed:
+    'ほかの人が先にこの欄を直しましたが、最新の内容を読み直せませんでした。しばらくしてから、もう一度試してください。',
   fieldValueGone: 'この欄は削除されています。画面を読み直します',
   planUnfilled: '{detail} 未記入 {count} 件',
-  sprintTaskPickUnfilled: '（うち{detail}未記入 {count} 件）',
-  sprintTaskPickRowUnfilled: '{detail}未記入',
+  sprintTaskPickUnfilled: '（うち{detail} 未記入 {count} 件）',
+  sprintTaskPickRowUnfilled: '{detail} 未記入',
   historyDetailWritten: '「{name}」を書いた',
   historyDetailEdited: '「{name}」を直した',
   historyDetailCleared: '「{name}」を空にした',

@@ -179,7 +179,7 @@ test('計画の画面の先のスプリントとスプリントに入れるダ�
   await expect(picker.locator('[data-pick-unfilled]')).toHaveCount(0);
   await list.getByRole('checkbox', { name: /^書いていないタスク/ }).check();
   // 選んだ 2 件のうち、未記入は 1 件（入れる操作は止めない）
-  await expect(picker.locator('[data-pick-unfilled]')).toHaveText('（うち詳細未記入 1 件）');
+  await expect(picker.locator('[data-pick-unfilled]')).toHaveText('（うち詳細 未記入 1 件）');
   await picker.getByRole('button', { name: '2 件入れる' }).click();
   await expect(picker).toBeHidden();
 

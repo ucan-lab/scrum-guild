@@ -12,13 +12,21 @@ import {
   taskFieldSet,
   taskHistory,
 } from '../src/shared/operations/task/index.ts';
-import { detailFieldDelete } from '../src/shared/operations/definition/index.ts';
+import { detailFieldDelete, detailFieldList } from '../src/shared/operations/definition/index.ts';
+import { planSummary } from '../src/shared/operations/sprint/index.ts';
 import { createApp } from '../src/server/app.ts';
 import { orgDb } from '../src/server/db/index.ts';
 import { queryPlanForTest } from '../src/server/db/testing.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
 import { unfilledCountStatement } from '../src/server/operations/task.ts';
-import { createDetailField, createStory, createTask, createTaskFieldValue } from './factories.ts';
+import {
+  createBoardColumn,
+  createDetailField,
+  createSprint,
+  createStory,
+  createTask,
+  createTaskFieldValue,
+} from './factories.ts';
 import { post } from './operations/harness.ts';
 import { createTarget, type Person, type Target } from './operations/world.ts';
 
@@ -395,6 +403,76 @@ describe('未記入の判定', () => {
     const plain = await createTarget();
     const bare = await call<{ task: { unfilled: boolean } }>(taskCreate, plain, { title: '新しいタスク' });
     expect(bare.body.task.unfilled).toBe(false);
+  });
+
+  test('別のワークスペースと別の組織の欄は、欄の一覧にも未記入の判定にも件数にも混ざらない', async () => {
+    const target = await createTarget();
+    const { organization } = target;
+    const memberId = target.member.userId!;
+    // 自分のワークスペースは欄が 0 件で、タスクが 1 件（スプリントに入っている）
+    const task = await createTask(organization, target.workspace.id, memberId);
+    const sprint = await createSprint(organization, target.workspace.id, { status: 'planned' });
+    const column = await createBoardColumn(organization, target.workspace.id);
+    await createTask(organization, target.workspace.id, memberId, {
+      sprint_id: sprint.id,
+      column_id: column.id,
+      column_position: 'a0',
+    });
+    // 別のワークスペースと別の組織に、欄を 1 件ずつ
+    await createDetailField(organization, target.otherWorkspace.id, { name: '別のワークスペースの欄' });
+    const stranger = await createTarget();
+    await createDetailField(stranger.organization, stranger.workspace.id, { name: '別の組織の欄' });
+
+    const detail = await call<{ fields: unknown[]; unfilled: boolean }>(taskDetail, target, { task_id: task.id });
+    expect(detail.body).toMatchObject({ fields: [], unfilled: false });
+    const list = await call<{ fields: unknown[] }>(detailFieldList, target, {});
+    expect(list.body.fields).toEqual([]);
+    const tree = await call<{ tasks: { unfilled: boolean }[]; unfilled_count: number }>(backlogTree, target, {});
+    expect(tree.body.unfilled_count).toBe(0);
+    expect(tree.body.tasks.every((row) => !row.unfilled)).toBe(true);
+    const plan = await call<{ lanes: { unfilled_count: number }[] }>(planSummary, target, {});
+    expect(plan.body.lanes.map((lane) => lane.unfilled_count)).toEqual([0]);
+  });
+
+  test('印と件数の範囲は、完了していないバックログ（tray = backlog）のタスクだけ。受信箱のタスクは未記入にしない', async () => {
+    const { target, criteria, task } = await world();
+    const inbox = await createTask(target.organization, target.workspace.id, target.member.userId!, {
+      is_imported: 1,
+      tray: 'inbox',
+    });
+    const detail = await call<{ unfilled: boolean }>(taskDetail, target, { task_id: inbox.id });
+    expect(detail.body.unfilled).toBe(false);
+    // 受信箱のタスクにも書けるが、そのタスクは未記入にならない
+    const set = await setField(target, inbox.id, criteria.id, '受信箱で書いた', null);
+    expect(set.status).toBe(200);
+    expect(set.body.unfilled).toBe(false);
+    await setField(target, inbox.id, criteria.id, null, '受信箱で書いた');
+    // 件数はバックログのタスクだけ（world のバックログのタスク 1 件）
+    const tree = await call<{ unfilled_count: number }>(backlogTree, target, {});
+    expect(tree.body.unfilled_count).toBe(1);
+    expect(task.tray).toBe('backlog');
+  });
+
+  test('成功した書き込みを再送しても 200 で今の値を返し、履歴は 1 件のまま', async () => {
+    const { target, criteria, task } = await world();
+    const first = await setField(target, task.id, criteria.id, 'x', null);
+    const again = await setField(target, task.id, criteria.id, 'x', null);
+    expect(first.status).toBe(200);
+    expect(again.status).toBe(200);
+    expect(again.body.field.value_md).toBe('x');
+    expect(await taskLogs(target, task.id)).toHaveLength(1);
+
+    // 空にする書き込みの再送も同じ
+    const cleared = await setField(target, task.id, criteria.id, null, 'x');
+    const clearedAgain = await setField(target, task.id, criteria.id, null, 'x');
+    expect(cleared.status).toBe(200);
+    expect(clearedAgain.status).toBe(200);
+    expect(clearedAgain.body.field.value_md).toBeNull();
+    expect(await taskLogs(target, task.id)).toHaveLength(2);
+
+    // 違う値が入っているときは、これまでどおり 409 の changed
+    await setField(target, task.id, criteria.id, '別の人の値', null);
+    expect((await setField(target, task.id, criteria.id, 'y', 'x')).status).toBe(409);
   });
 
   test('件数の文は、ワークスペースの未完了のタスクを tasks_workspace_tray で引く', async () => {

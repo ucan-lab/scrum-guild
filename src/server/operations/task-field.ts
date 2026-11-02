@@ -66,7 +66,8 @@ export async function readTaskFields(db: OrganizationDb, workspaceId: string, ta
   return rows.map((row) => ({ id: row.id, name: row.name, value_md: row.value_md }));
 }
 
-// 完了していないタスクで、値の行が無い決まった欄があるか（タスクが無ければ偽）
+// 完了していないバックログ（tray = 'backlog'）のタスクで、値の行が無い決まった欄があるか（タスクが無ければ偽。
+// 受信箱とアーカイブのタスクは、印も件数も出さないので偽）
 export async function readUnfilled(db: OrganizationDb, workspaceId: string, taskId: string): Promise<boolean> {
   const row = await db.first(
     db.statement((q) =>
@@ -75,6 +76,7 @@ export async function readUnfilled(db: OrganizationDb, workspaceId: string, task
         .select((eb) => unfilledExists(eb, workspaceId).as('unfilled'))
         .where('tasks.id', '=', taskId)
         .where('tasks.workspace_id', '=', workspaceId)
+        .where('tasks.tray', '=', 'backlog')
         .where('tasks.deleted_at', 'is', null)
         .where('tasks.completed_at', 'is', null),
     ),
@@ -262,9 +264,22 @@ export const taskFieldSetOperation = implement(taskFieldSet, async ({ db, actor,
 
   if ((results[0]?.changes ?? 0) > 0) return respond();
 
-  // 閉じていれば 409、タスクか欄が無ければ 404、どちらでもなければ、別の要求が先に同じ欄を直した
+  // 閉じていれば 409、タスクか欄が無ければ 404
   await throwIfClosed(db, workspaceId);
   const [taskAgain, fieldAgain] = await readTarget(db, workspaceId, taskId, fieldId);
   if (taskAgain.rows[0] === undefined || fieldAgain.rows[0] === undefined) throw new ApiError(404, 'not_found');
+  // 読み直した今の値がすでに書こうとした値（空にするなら行なし）なら、成功した書き込みの再送（か、同じ値を同時に書いた片方）なので、
+  // 断らずに今の値を返す。履歴は書かない（先に通った書き込みが残している）
+  const current = await db.first(
+    db.statement((q) =>
+      q
+        .selectFrom('task_field_values')
+        .select('task_field_values.value_md')
+        .where('task_field_values.task_id', '=', taskId)
+        .where('task_field_values.field_id', '=', fieldId),
+    ),
+  );
+  if ((current?.value_md ?? null) === next) return respond();
+  // どちらでもなければ、別の要求が先に同じ欄を直した
   throw new ApiError(409, 'conflict', { reason: 'changed' });
 });
