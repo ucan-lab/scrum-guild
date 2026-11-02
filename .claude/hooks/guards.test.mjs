@@ -1547,22 +1547,124 @@ describe('bash-rules: 確認を挟む', () => {
     assert.match(verdict('cf-wrangler dev')[1], /util\.parseArgs/);
   });
 
+  // gh pr merge は、作業ブランチの中の固定の形だけを判定せず許可ルールに任せる。CI などで動く環境の変数は外して確かめる
+  const SHA = '0123456789abcdef0123456789abcdef01234567';
+  const withoutUnattendedEnv = (fn) => {
+    const saved = ['CI', 'GITHUB_ACTIONS', 'CLAUDE_CODE_ENTRYPOINT'].map((k) => [k, process.env[k]]);
+    for (const [k] of saved) delete process.env[k];
+    try {
+      return fn();
+    } finally {
+      for (const [k, v] of saved) if (v !== undefined) process.env[k] = v;
+    }
+  };
+  const mergeVerdict = (command, branch = '372-session-merge') => withoutUnattendedEnv(() => verdict(command, branch));
+
   for (const command of [
-    'gh pr merge 21 --squash --match-head-commit abc123',
-    'gh pr merge 21 --squash --match-head-commit=abc123',
-    'gh -R ucan-lab/scrum-guild pr merge 21 --match-head-commit abc123',
-    'gh pr merge --repo o/r 21 --squash --match-head-commit abc123',
-    'gh pr merge $N --squash --match-head-commit $HEAD',
-    'bash -c "gh pr merge 21 --squash --match-head-commit abc123"',
+    `gh pr merge --squash --match-head-commit ${SHA}`,
+    `gh pr merge --match-head-commit ${SHA} --squash`,
+    `gh pr merge --squash --match-head-commit=${SHA}`,
+    `gh pr merge --squash --match-head-commit ${SHA.toUpperCase()}`,
   ]) {
     test(`確認を挟まず、許可ルールに任せる: ${command}`, () => {
-      assert.equal(verdict(command), null);
+      assert.equal(mergeVerdict(command), null);
     });
   }
 
-  test('.claude/settings.json の許可に gh pr merge がある', () => {
+  for (const command of [
+    // 番号と URL、別のリポジトリ
+    `gh pr merge 21 --squash --match-head-commit ${SHA}`,
+    `gh pr merge https://github.com/o/r/pull/3 --squash --match-head-commit ${SHA}`,
+    `gh -R ucan-lab/scrum-guild pr merge --squash --match-head-commit ${SHA}`,
+    `gh pr merge --repo o/r --squash --match-head-commit ${SHA}`,
+    `gh pr merge --repo=o/r --squash --match-head-commit ${SHA}`,
+    `GH_REPO=o/r gh pr merge --squash --match-head-commit ${SHA}`,
+    `GH_HOST=example.com gh pr merge --squash --match-head-commit ${SHA}`,
+    `export GH_REPO=o/r; gh pr merge --squash --match-head-commit ${SHA}`,
+    // head の固定が空、短い、展開、繰り返し
+    'gh pr merge --squash --match-head-commit ""',
+    "gh pr merge --squash --match-head-commit ''",
+    'gh pr merge --squash --match-head-commit',
+    'gh pr merge --squash --match-head-commit abc123',
+    'gh pr merge --squash --match-head-commit "$H"',
+    'gh pr merge --squash --match-head-commit $UNSET',
+    'gh pr merge --squash --match-head-commit "${H:-}"',
+    'gh pr merge --squash --match-head-commit "$(git rev-parse HEAD)"',
+    `gh pr merge --squash --match-head-commit ${SHA} --match-head-commit ""`,
+    `gh pr merge --squash --match-head-commit ${SHA} --match-head-commit=${SHA}`,
+    // 方式
+    `gh pr merge --merge --match-head-commit ${SHA}`,
+    `gh pr merge --rebase --match-head-commit ${SHA}`,
+    `gh pr merge --match-head-commit ${SHA}`,
+    `gh pr merge --squash --merge --match-head-commit ${SHA}`,
+    // 本文に秘密を出す、ブランチを消す、ほかのフラグ
+    `gh pr merge --squash --match-head-commit ${SHA} --body-file .dev.vars`,
+    `gh pr merge --squash --match-head-commit ${SHA} -F ~/.config/gh/hosts.yml`,
+    `gh pr merge --squash --match-head-commit ${SHA} --body x`,
+    `gh pr merge --squash --match-head-commit ${SHA} --subject x`,
+    `gh pr merge --squash --match-head-commit ${SHA} --delete-branch`,
+    `gh pr merge --squash --subject --match-head-commit=${SHA}`,
+    `gh pr merge --squash --match-head-commit ${SHA} -- --admin`,
+    // 展開で渡す語
+    `gh pr merge --squash --match-head-commit ${SHA} $(echo --admin)`,
+    `gh pr merge --squash --match-head-commit ${SHA} "$(echo --admin)"`,
+    `gh pr merge --squash --match-head-commit ${SHA} \${A:---admin}`,
+    `gh pr merge --squash --match-head-commit ${SHA} --{admin,x}`,
+    `gh pr merge --squash --match-head-commit ${SHA} $@`,
+    `gh pr merge --squash --match-head-commit ${SHA} $(rm -rf ~/x)`,
+    // --auto と --admin
+    `gh pr merge --squash --admin --match-head-commit ${SHA}`,
+    `gh pr merge --squash --auto --match-head-commit ${SHA}`,
+  ]) {
+    test(`固定の形でないマージは止める: ${command}`, () => {
+      assert.equal(mergeVerdict(command)?.[0], 'deny');
+    });
+  }
+
+  test('作業ブランチの外（main、番号の無い名前）ではマージを止める', () => {
+    for (const branch of ['main', 'claude/x', 'no-number', 'x-21-y']) {
+      assert.equal(mergeVerdict(`gh pr merge --squash --match-head-commit ${SHA}`, branch)?.[0], 'deny', branch);
+    }
+  });
+
+  test('場所を判定できないとき（cd の先が展開）はマージを止める', () => {
+    assert.equal(mergeVerdict(`cd $X && gh pr merge --squash --match-head-commit ${SHA}`)?.[0], 'deny');
+  });
+
+  test('非対話の実行（CI、claude -p）では確認に回す', () => {
+    for (const env of [{ CI: 'true' }, { GITHUB_ACTIONS: 'true' }, { CLAUDE_CODE_ENTRYPOINT: 'sdk-cli' }]) {
+      const saved = ['CI', 'GITHUB_ACTIONS', 'CLAUDE_CODE_ENTRYPOINT'].map((k) => [k, process.env[k]]);
+      for (const [k] of saved) delete process.env[k];
+      Object.assign(process.env, env);
+      try {
+        assert.equal(verdict(`gh pr merge --squash --match-head-commit ${SHA}`, '372-session-merge')?.[0], 'ask', JSON.stringify(env));
+      } finally {
+        for (const [k, v] of saved) {
+          if (v === undefined) delete process.env[k];
+          else process.env[k] = v;
+        }
+      }
+    }
+  });
+
+  test('対話の実行（CLAUDE_CODE_ENTRYPOINT=cli）では確認に回さない', () => {
+    const saved = ['CI', 'GITHUB_ACTIONS', 'CLAUDE_CODE_ENTRYPOINT'].map((k) => [k, process.env[k]]);
+    for (const [k] of saved) delete process.env[k];
+    process.env.CLAUDE_CODE_ENTRYPOINT = 'cli';
+    try {
+      assert.equal(verdict(`gh pr merge --squash --match-head-commit ${SHA}`, '372-session-merge'), null);
+    } finally {
+      for (const [k, v] of saved) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  });
+
+  test('.claude/settings.json の許可は gh pr merge だけに絞り、ほかの gh を許さない', () => {
     const settings = JSON.parse(readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'settings.json'), 'utf8'));
-    assert.ok(settings.permissions.allow.includes('Bash(gh pr merge *)'));
+    const ghRules = settings.permissions.allow.filter((rule) => /^Bash\(gh\b/.test(rule));
+    assert.deepEqual(ghRules, ['Bash(gh pr merge *)']);
   });
 
   test('止めるものと確認を挟むものが並んだら止める', () => {

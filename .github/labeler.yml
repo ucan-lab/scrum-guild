@@ -59,10 +59,12 @@ needs-human:
           - "**/.agents/**"
           - "**/AGENTS.md"
           - "**/AGENTS.override.md"
+          # Claude が読む決まり。マージの判定を担うスキルと同じく、セッションが人に聞かずにマージするので人が差分を読む
+          - "**/CLAUDE.md"
   # .claude/ の下のファイル（CI が書き込みのトークンを持って走らせるスクリプトを含む。入れ子の .claude/ も）。
-  # スキルとチェックリストの .md だけを外す（ai-review のスキルは上の規則が守る。理由は docs/development.md の「マージの判定」）。
+  # チェックリストの .md だけを外す（スキルは .md も守る。理由は docs/development.md の「マージの判定」）。
   # 評価は scripts/labeler.test.ts で確かめる
   - changed-files:
       - all-globs-to-any-file:
           - "**/.claude/**"
-          - "!.claude/{skills,checklists}/**/*.md"
+          - "!.claude/checklists/**/*.md"

@@ -1,12 +1,13 @@
 // Bash の判定。本番に触る操作、WORKERS_CI の設定、main の上のコミットと main への push、force push、
 // シークレット（.dev.vars と .env）の読み取りと書き込み、gh pr merge を通さないマージを止め、
-// gh pr merge、依存の変更、マイグレーションの作成、判定しきれない push と場所を判定できないデプロイのスクリプト、git のフックを外す --no-verify、
+// 依存の変更、マイグレーションの作成、判定しきれない push と場所を判定できないデプロイのスクリプト、git のフックを外す --no-verify、
 // 道具の名前が展開で決まるコマンド、env -S、読むだけの道具以外の xargs、wrangler の設定の書き換えと wrangler dev の -c、
 // インタープリタの本文の中の wrangler と守る先の名前、展開を含む package.json のスクリプトの引数、
 // 場所か package.json を判定できないパッケージマネージャーのスクリプトの実行、npm が知らないコマンド、展開で決まるスクリプトの名前、
 // 表に無いフラグの読み方が多すぎるコマンド、読めない短いフラグのまとめ、
 // 守る先とリポジトリの根とその祖先の削除と移動（rm、rmdir、mv、find -delete）、git clean の -x と -X では人の確認を挟む。
 // e2e を走らせるコマンド（playwright test。pnpm e2e もスクリプトの中身として）は deny にする。
+// gh pr merge は、<番号>-… の作業ブランチの中で打つ --squash --match-head-commit <40桁の SHA> の固定の形だけを判定せず（.claude/settings.json の許可ルールに任せる）、ほかの形は deny にする。非対話の実行は確認に回す。
 // find の -exec 系は {} を起点に置き換えて同じ規則に掛け直す（docs/development.md の「Claude の設定とフック」）。
 // permissions.deny の前方一致では npx wrangler や pnpm exec wrangler の言い換えを取りこぼすので、語に分けて判定する。
 // 踏み線であって守りの本体ではない。変数の中身と、パイプで sh に流す中身は見えない。
@@ -732,7 +733,33 @@ function readGhApi(args) {
   return read;
 }
 
-function judgeGh(args, stdinContext) {
+const MERGE_SHA = /^[0-9a-f]{40}$/i;
+const MERGE_FORM_REASON = 'gh pr merge は --squash --match-head-commit <確かめた head の40桁の SHA> だけを、番号も URL も -R も本文のフラグも展開も付けずに打つ（PR は作業ブランチのものになる。docs/development.md の「マージの判定」）';
+const MERGE_BRANCH_REASON = 'gh pr merge は <番号>-… の作業ブランチの中で打つ（作業ブランチの PR だけをマージするため。docs/development.md の「マージの判定」）';
+const MERGE_UNATTENDED_REASON = '非対話の実行（claude -p、CI の中）ではマージしない。人に任せる（docs/development.md の「マージの判定」）';
+
+// gh pr merge の許す形は --squash と --match-head-commit <40桁の16進> だけ。ほかの語（番号、URL、-R、-b/-F などの本文のフラグ、展開、--merge、--rebase）はフックでは全部止める
+function isPinnedSquashMerge(args) {
+  if (args[0] !== 'pr' || args[1] !== 'merge') return false;
+  const rest = args.slice(2);
+  let squash = 0;
+  let pin = 0;
+  for (let i = 0; i < rest.length; i += 1) {
+    const a = rest[i];
+    if (a === '--squash') squash += 1;
+    else if (a === '--match-head-commit' && MERGE_SHA.test(rest[i + 1] ?? '')) {
+      pin += 1;
+      i += 1;
+    } else if (/^--match-head-commit=/.test(a) && MERGE_SHA.test(a.slice('--match-head-commit='.length))) pin += 1;
+    else return false;
+  }
+  return squash === 1 && pin === 1;
+}
+
+// 非対話の実行は、確認を出せないので ASK で止まる。フックの子プロセスの環境で見分ける
+const isUnattended = (env) => Boolean(env.CI || env.GITHUB_ACTIONS) || /^sdk/.test(env.CLAUDE_CODE_ENTRYPOINT ?? '');
+
+function judgeGh(args, stdinContext, merge = {}) {
   const pos = positionals(
     args,
     new Set(['-R', '--repo', '-X', '--method', '-H', '--header', '-f', '-F', '--field', '--raw-field', '--input', '--jq', '-q', '--template', '-t', '--hostname', '--cache', '-p', '--preview']),
@@ -746,6 +773,11 @@ function judgeGh(args, stdinContext) {
     if (!args.some((a) => /^--match-head-commit(=.|$)/.test(a))) {
       return [DENY, 'gh pr merge には --match-head-commit <確かめた head> を付ける'];
     }
+    // 番号や URL、-R、本文のフラグ、展開、--merge と --rebase、2回目の --match-head-commit は、固定の形に当たらないので止める
+    if (merge.redirectsRepo || !isPinnedSquashMerge(args)) return [DENY, MERGE_FORM_REASON];
+    // 作業ブランチの外では、gh が別の PR を選びうる
+    if (!merge.dir || !/^\d+-/.test(merge.branchOf?.(merge.dir) ?? '')) return [DENY, MERGE_BRANCH_REASON];
+    if (isUnattended(process.env)) return [ASK, MERGE_UNATTENDED_REASON];
     return null;
   }
   // エイリアスは中身のサブコマンドをフックから隠す（gh alias set m 'pr merge --auto' の後の gh m）
@@ -2755,7 +2787,11 @@ function judgeSegment(words, ctx) {
     const envMovesGit = words.slice(0, ci).some((w) => /^GIT_(DIR|WORK_TREE)=/.test(w)) || GIT_LOCATION_VARIABLES.some((name) => ctx.env?.[name]);
     results.push(judgeGit(args, envMovesGit ? null : ctx.dir, ctx.branchOf));
   }
-  if (tool === 'gh') results.push(judgeGh(args, ctx.stdinContext));
+  if (tool === 'gh') {
+    // GH_REPO と GH_HOST は gh の宛先を替える。道具の前の代入と、前の区切りの export で見る
+    const redirectsRepo = words.slice(0, ci).some((w) => /^GH_(REPO|HOST)=/.test(w)) || Boolean(ctx.env?.GH_REPO || ctx.env?.GH_HOST);
+    results.push(judgeGh(args, ctx.stdinContext, { dir: ctx.dir, branchOf: ctx.branchOf, redirectsRepo }));
+  }
   if (['curl', 'wget', 'http', 'https'].includes(tool)) results.push(judgeHttpClient(tool, args, ctx.stdinContext));
   if (tool === 'eval') results.push(judgeBash(args.join(' '), nextCtx));
   if (SHELLS.has(tool)) {
@@ -2785,7 +2821,9 @@ function switchedBranch(args) {
 
 // 作業場所の判定を変える環境変数。CDPATH は相対の cd と pushd の行き先を、GIT_DIR と GIT_WORK_TREE は git の作業コピーを変える
 const GIT_LOCATION_VARIABLES = ['GIT_DIR', 'GIT_WORK_TREE'];
-const LOCATION_VARIABLES = ['CDPATH', ...GIT_LOCATION_VARIABLES];
+// gh の宛先（リポジトリとホスト）を替える変数。gh pr merge が別のリポジトリへ向かないよう、export の後の区切りでも見る
+const GH_TARGET_VARIABLES = ['GH_REPO', 'GH_HOST'];
+const LOCATION_VARIABLES = ['CDPATH', ...GIT_LOCATION_VARIABLES, ...GH_TARGET_VARIABLES];
 // npm exec、npm x、npx がシェルの文字列として動かす設定の変数（npm は大文字小文字を区別しない）。前の区切りで設定したものは値を読まない
 const NPM_CALL_VARIABLE = 'npm_config_call';
 const NPM_CALL_MENTION = /(^|[^\w])npm_config_call([^\w]|$)/i;
@@ -2799,6 +2837,8 @@ const VARIABLE_MENTIONS = {
   CDPATH: /(^|[^\w])(CDPATH|cdpath)([^\w]|$)/,
   GIT_DIR: /(^|[^\w])GIT_DIR([^\w]|$)/,
   GIT_WORK_TREE: /(^|[^\w])GIT_WORK_TREE([^\w]|$)/,
+  GH_REPO: /(^|[^\w])GH_REPO([^\w]|$)/,
+  GH_HOST: /(^|[^\w])GH_HOST([^\w]|$)/,
 };
 // 中身をこのシェルで動かす道具。中で cd、export をしても見えないので、後ろの作業場所と GIT_DIR を判定できないものとする
 const IN_SHELL_RUNNERS = new Set(['eval', 'source', '.']);

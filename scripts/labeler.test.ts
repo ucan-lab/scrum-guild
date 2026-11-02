@@ -68,13 +68,20 @@ describe('needs-human の .claude/ の規則', () => {
     }
   });
 
-  test('ai-review 以外のスキルとチェックリストの .md は守らない', () => {
+  test('スキルの .md と CLAUDE.md は守る（セッションが人に聞かずにマージするため）', () => {
     for (const path of [
       '.claude/skills/retro/SKILL.md',
+      '.claude/skills/pr-feedback/SKILL.md',
       '.claude/skills/pr-create/github-mcp.md',
-      '.claude/checklists/multi-tenant.md',
-      '.claude/checklists/languages/typescript.md',
+      'CLAUDE.md',
+      'src/CLAUDE.md',
     ]) {
+      assert.equal(needsHuman(path), true, path);
+    }
+  });
+
+  test('チェックリストの .md は守らない', () => {
+    for (const path of ['.claude/checklists/multi-tenant.md', '.claude/checklists/languages/typescript.md']) {
       assert.equal(needsHuman(path), false, path);
     }
   });
@@ -103,7 +110,7 @@ describe('needs-human の .claude/ の規則', () => {
   });
 
   test('.claude/ の外の文書は守らない', () => {
-    for (const path of ['docs/development.md', 'CLAUDE.md', 'README.md']) {
+    for (const path of ['docs/development.md', 'README.md']) {
       assert.equal(needsHuman(path), false, path);
     }
   });
