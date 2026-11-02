@@ -235,7 +235,8 @@
   <span class="visually-hidden" role="status">{status}</span>
 </Setting>
 
-<WorkspaceCreateDialog bind:this={createDialog} {slug} {meId} />
+<!-- 作った後、完了の表示を×などで閉じて画面に残っても一覧に出るよう、読み直す -->
+<WorkspaceCreateDialog bind:this={createDialog} {slug} {meId} oncreated={() => void section.load()} />
 <WorkspaceCloseDialog
   bind:this={closeDialog}
   {slug}

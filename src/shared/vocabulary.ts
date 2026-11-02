@@ -180,6 +180,8 @@ export const dictionary = defineDictionary({
   workspaceSubmit: '作る',
   workspaceSubmitting: '作っています',
   workspaceCreated: '{workspace}を作りました',
+  workspaceCreateAnother: '続けて作る',
+  workspaceOpen: '開く',
   workspaceCreateFailed: '作れませんでした。もう一度試してください。',
   workspaceLeaderRejected: '選んだ人は、いま最初の{leader}に指せません。選び直してください。',
 

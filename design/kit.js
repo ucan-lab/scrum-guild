@@ -1581,7 +1581,12 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       `<label class="field" for="d-wn"><span class="field-label">名前</span><input class="input" id="d-wn" placeholder="例: 保守チーム"></label>
        <label class="field" for="d-wl"><span class="field-label">最初の${t("leader")}</span><select class="select" id="d-wl">${Object.values(D.users).filter((u) => !u.left).map((u) => `<option>${esc(u.name)}</option>`).join("")}</select><span class="field-hint">自分でもかまいません。あとから${t("leader")}を足せます。</span></label>
        <p class="field-hint">${t("column")}は「未着手、作業中、レビュー、${t("done")}」、決まった欄は「受け入れ基準」、換算は 1 ${t("points")} = 4 時間、週の始まりは月曜、タイムゾーンは Asia/Tokyo（このブラウザの設定）で作ります。あとから設定で変えられます。</p>`,
-      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("workspace")}を作りました">作る</button>`),
+      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-workspace-created="d-wn">作る</button>`),
+    // 作った後（本番の WorkspaceCreateDialog の完了の表示）。同じダイアログの中身を差し替える。
+    // 「続けて作る」は空のフォームに戻って名前の欄へ、「開く」は作った${t("workspace")}のバックログへ移る。×、Esc、背景で閉じたら今の画面に残る
+    workspaceCreated: (name) => openDialog(`${t("workspace")}を作りました`,
+      `<div class="callout is-ok">${icon("check")}<span class="wrap-anywhere">${esc(name)}</span></div>`,
+      `<button class="btn is-quiet" type="button" data-workspace-again>続けて作る</button><a class="btn is-primary" href="backlog.html">開く</a>`),
     closeWorkspace: () => {
       const target = D.admin.workspaces.find((w) => !w.closed);
       return openDialog(`「${esc(target ? target.name : "")}」を終了しますか？`,
@@ -2392,6 +2397,19 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     if ((el = hit("data-org-create"))) {
       if (document.querySelector(`[data-login-via="${el.dataset.orgCreate}"]:checked`)?.value === "google") inviteLink(el.dataset.orgCreate, `${t("organization")}を作りました`);
       else DIALOGS.organizationCreated();
+      return;
+    }
+    // ワークスペースを作る: 「作る」で完了の表示に替わる。「続けて作る」は、開いた要素を保ったまま空のフォームに戻す
+    if ((el = hit("data-workspace-created"))) {
+      const opener = dialogOpener;
+      DIALOGS.workspaceCreated(document.getElementById(el.dataset.workspaceCreated).value.trim() || "保守チーム");
+      dialogOpener = opener;
+      return;
+    }
+    if (hit("data-workspace-again")) {
+      const opener = dialogOpener;
+      DIALOGS.createWorkspace();
+      dialogOpener = opener;
       return;
     }
     if ((el = hit("data-completed-toggle"))) {
