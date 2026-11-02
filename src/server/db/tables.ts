@@ -1,4 +1,4 @@
-// 28表の列。migrations/ の全マイグレーションを当てた後の写しで、列名は DB と同じスネークケースのまま持つ。
+// 29表の列。migrations/ の全マイグレーションを当てた後の写しで、列名は DB と同じスネークケースのまま持つ。
 // 共通の表と組織の中の表の区分は docs/data-model.md の「共通の表と組織の中の表」。表を足すときは、
 // マイグレーションと同じ PR でここに足す（足し忘れと列のずれは test/table-columns.test.ts が落とす）
 import {
@@ -276,6 +276,14 @@ export const organizationTableColumns = {
     created_at: text,
     updated_at: text,
     deleted_at: textOrNull,
+  },
+  // migrations/0016_add_task_field_values.sql で足した
+  task_field_values: {
+    task_id: text,
+    field_id: text,
+    value_md: text,
+    updated_by: text,
+    updated_at: text,
   },
   sprint_entries: {
     id: text,

@@ -4,6 +4,7 @@ import type { ExpressionBuilder, OrganizationTables } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import { amountOf } from './experience.ts';
 import { implement } from './implement.ts';
+import { unfilledExists } from './task-field.ts';
 
 // ベロシティの平均に入れる終了したスプリントの数と、平均から除いたことを示す延長したスプリントの最大数
 const VELOCITY_COUNTED = 3;
@@ -125,6 +126,25 @@ export const planSummaryOperation = implement(planSummary, async ({ db, workspac
                 .end(),
             )
             .as('unestimated_count'),
+          // 入っている完了していないタスクのうち、決まった欄が未記入のもの（削除していない欄に、値の行が無いものがある）
+          eb.fn
+            .sum<number>(
+              eb
+                .case()
+                .when(
+                  eb.and([
+                    eb('tasks.id', 'is not', null),
+                    eb('tasks.completed_at', 'is', null),
+                    // スプリントに入るタスクは常にバックログ（tasks の CHECK）。印と件数の範囲をそろえるため、明示する
+                    eb('tasks.tray', '=', 'backlog'),
+                    unfilledExists(eb, workspaceId),
+                  ]),
+                )
+                .then(1)
+                .else(0)
+                .end(),
+            )
+            .as('unfilled_count'),
         ])
         .where('sprints.workspace_id', '=', workspaceId)
         .where('sprints.deleted_at', 'is', null)
@@ -212,6 +232,7 @@ export const planSummaryOperation = implement(planSummary, async ({ db, workspac
       points: amountOf(row.points),
       task_count: amountOf(row.task_count),
       unestimated_count: amountOf(row.unestimated_count),
+      unfilled_count: amountOf(row.unfilled_count),
     })),
     epics: epicsResult.rows.map((row) => ({
       id: row.id,

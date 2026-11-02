@@ -13,8 +13,9 @@
   import { t } from '../../../../../lib/vocabulary.svelte.ts';
   import type { PageProps } from './$types';
 
-  // ワークスペースの設定の画面（design/settings.html）。今あるのは列（ColumnsSetting）、完成の定義（DodSetting）、区分とリポジトリの節で、
-  // ほかの節（一般、決まった欄、換算比率、ワークスペースの休日）は、それぞれの Issue で .settings の中に、見本の順に足す。
+  // ワークスペースの設定の画面（design/settings.html）。今あるのは列（ColumnsSetting）、決まった欄（DefinitionsSetting の kind = 'field'）、
+  // 完成の定義（DodSetting）、区分とリポジトリの節で、
+  // ほかの節（一般、換算比率、ワークスペースの休日）は、それぞれの Issue で .settings の中に、見本の順に足す。
   // 完成の定義は枠の値（workspace.definitionOfDone）を出し、保存したら枠（app:workspace）を読み直す。
   // 開けるのはリーダーと管理者だけ。一般のメンバーが URL で開いたら「入れない」の案内と、バックログへ戻るリンクを出す（メニューにも出さない）。
   // 閉じたワークスペースでは、節を読み取り専用で出す（枠が読み取り専用の帯を出す）。
@@ -125,6 +126,15 @@
         {slug}
         workspaceId={workspace.id}
         columns={definitions.columns}
+        {canWrite}
+        onchanged={reload}
+        onstale={stale}
+      />
+      <DefinitionsSetting
+        kind="field"
+        {slug}
+        workspaceId={workspace.id}
+        items={definitions.fields}
         {canWrite}
         onchanged={reload}
         onstale={stale}

@@ -140,6 +140,10 @@
     groups.flatMap((group) => group.tasks.filter((task) => picked.has(task.id)).map((task) => task.id)),
   );
   const tooMany = $derived(chosen.length > SPRINT_TASK_ADD_MAX);
+  // 選んだタスクのうち、決まった欄が未記入のもの（木のタスクは完了していないものだけ）。入れる操作は止めない
+  const unfilledChosen = $derived(
+    groups.flatMap((group) => group.tasks.filter((task) => picked.has(task.id) && task.unfilled)).length,
+  );
   const ready = $derived(!loading && !loadFailed && sprint !== null);
 
   // 見出しのチェックが見るのは、見えている配下（shown）だけ。絞っている間に、見えないタスクまで選ばないため
@@ -177,6 +181,7 @@
       task.points === null ? t('pointsUnsetTitle') : t('pointsLabel', { points: t('points'), value: task.points }),
     ];
     if (task.sprint !== null) parts.push(t('sprintTaskAddInSprint', { label: sprintLabel(task.sprint, t) }));
+    if (task.unfilled) parts.push(t('sprintTaskPickRowUnfilled', { detail: t('detail') }));
     return parts.join('・');
   }
 
@@ -358,7 +363,11 @@
   <span class="visually-hidden" role="status">{status}</span>
   {#snippet footer(close)}
     {#if ready && groups.length > 0}
-      <span class="pick-count">{t('sprintTaskPickCount', { count: chosen.length })}</span>
+      <span class="pick-count"
+        >{t('sprintTaskPickCount', { count: chosen.length })}{#if unfilledChosen > 0}
+          <span data-pick-unfilled>{t('sprintTaskPickUnfilled', { detail: t('detail'), count: unfilledChosen })}</span
+          >{/if}</span
+      >
     {/if}
     <button class="btn is-quiet" type="button" aria-disabled={submitting} onclick={close}>{t('cancel')}</button>
     <button

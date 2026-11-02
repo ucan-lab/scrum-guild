@@ -24,12 +24,14 @@ export type PlanVelocity = z.output<typeof planVelocitySchema>;
 
 // 先のスプリント（planned と active）1つの集計。points は入っている削除していないタスクのポイントの合計（未見積もりは 0。
 // 進行中のスプリントで完了したタスクも含む。計画の画面の「N 件・M pt」と同じ数え方）、task_count はその件数、
-// unestimated_count は入っている完了していないタスクのうち未見積もり（points が空）の件数
+// unestimated_count は入っている完了していないタスクのうち未見積もり（points が空）の件数、
+// unfilled_count は入っている完了していないタスクのうち決まった欄が未記入（削除していない欄に値の行が無いものがある）の件数
 export const planLaneSchema = z.object({
   sprint_id: z.string(),
   points: z.number().int(),
   task_count: z.number().int(),
   unestimated_count: z.number().int(),
+  unfilled_count: z.number().int(),
 });
 
 export type PlanLane = z.output<typeof planLaneSchema>;
@@ -61,7 +63,7 @@ export type PlanEpic = z.output<typeof planEpicSchema>;
 export const planSummary = defineOperation({
   name: 'plan-summary',
   description:
-    '計画の画面の集計を返す。延長したスプリントを除いた直近 3 スプリントの完了ポイントの平均（ベロシティ）、先のスプリントごとの入れたポイントと件数と未見積もりの件数、エピックごとのポイント',
+    '計画の画面の集計を返す。延長したスプリントを除いた直近 3 スプリントの完了ポイントの平均（ベロシティ）、先のスプリントごとの入れたポイントと件数と未見積もりの件数と決まった欄が未記入の件数、エピックごとのポイント',
   mode: 'read',
   permission: 'member',
   workspace: true,

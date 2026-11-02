@@ -22,6 +22,9 @@ export const backlogTaskSchema = z.object({
   repository: definitionRefSchema.nullable(),
   // 入っているスプリント（削除していないもの）。入っていなければ null
   sprint: sprintRefSchema.nullable(),
+  // 決まった欄が未記入か。完了していないタスクで、削除していない欄に値の行が無いものがあるとき真（行は完了していないタスクだけなので、
+  // 欄が1つも無いワークスペースでは常に偽）
+  unfilled: z.boolean(),
 });
 
 export type BacklogTask = z.output<typeof backlogTaskSchema>;
@@ -118,7 +121,7 @@ const filterRefSchema = idSchema.nullable().optional();
 export const backlogTree = defineOperation({
   name: 'backlog-tree',
   description:
-    'バックログの木を返す。エピック（配下のストーリーとポイントの合計つき）、親のないストーリー（配下の未完了のタスク、完了した件数、ポイントの合計つき）と、親のない未完了のタスク、完了した親のないタスクの件数、絞り込みの担当とエピックの選択肢。担当、区分、リポジトリ、エピック、タイトルの検索で絞れる',
+    'バックログの木を返す。エピック（配下のストーリーとポイントの合計つき）、親のないストーリー（配下の未完了のタスク、完了した件数、ポイントの合計つき）と、親のない未完了のタスク（決まった欄が未記入かつき）、完了した親のないタスクの件数、決まった欄が未記入の未完了のタスクの全体の件数、絞り込みの担当とエピックの選択肢。担当、区分、リポジトリ、エピック、タイトルの検索で絞れる',
   mode: 'read',
   permission: 'member',
   workspace: true,
@@ -140,6 +143,9 @@ export const backlogTree = defineOperation({
     stories: z.array(backlogStorySchema),
     tasks: z.array(backlogTaskSchema),
     completed_count: z.number().int().nullable(),
+    // 決まった欄が未記入の、完了していないタスクの件数。絞り込みに関わらず、ワークスペースの全体で数える
+    // （バックログの見出しの集計）
+    unfilled_count: z.number().int(),
     choices: backlogChoicesSchema,
   }),
 });

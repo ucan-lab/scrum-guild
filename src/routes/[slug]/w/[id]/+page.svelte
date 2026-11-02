@@ -283,6 +283,18 @@
   const taskPlaces = $derived(placesOf(taskLists));
   const rootRows = $derived(taskLists[ROOT] ?? []);
 
+  // 見出しの「<詳細> 未記入」の件数。絞り込みに関わらず、ワークスペースの完了していないタスク全体の値（API の unfilled_count）に、
+  // 読み直すまでの間の画面の変更を足し引きする: 起票で足した行（まだ木に無いもの）の未記入を足し、完了にした行の未記入を引く
+  const unfilledCount = $derived.by(() => {
+    if (tree === null) return 0;
+    const loaded = [...loadedStories.flatMap(({ row: story }) => story.tasks), ...tree.tasks];
+    const fresh = added.filter((entry) => !inTree(tree, entry.task.id)).map((entry) => entry.task);
+    const unfilledOpen = (rows: readonly BacklogTask[]) =>
+      rows.filter((row) => row.unfilled && !completedIds.includes(row.id)).length;
+    const completedLoaded = loaded.filter((row) => row.unfilled && completedIds.includes(row.id)).length;
+    return Math.max(0, tree.unfilled_count - completedLoaded + unfilledOpen(fresh));
+  });
+
   // ドラッグの判定に渡す、今の木の並び（画面で動かした並びを含む）
   const dropIndex = $derived(
     indexTree({
@@ -1004,6 +1016,7 @@
     title={t('backlog')}
     eyebrow={workspace.name}
     focusable
+    tallies={[{ tone: 'warn', icon: 'pen', label: t('unfilledChip', { detail: t('detail') }), count: unfilledCount }]}
     meta={data.teamTotal === null ? undefined : teamExperience}
   >
     {#snippet actions()}

@@ -26,6 +26,7 @@ import {
 import { taskAssigneePartyStatements } from './epic-party.ts';
 import { implement } from './implement.ts';
 import { sprintRefColumns, sprintRefOf, type SprintRefRow } from './sprint-refs.ts';
+import { readUnfilled, unfilledExists } from './task-field.ts';
 import {
   MAX_TIES,
   moveConflict,
@@ -249,6 +250,8 @@ export const taskCreateOperation = implement(taskCreate, async ({ db, actor, wor
       category,
       repository,
       sprint: null,
+      // 作った直後は値の行が無いので、削除していない欄が1つでもあれば未記入
+      unfilled: await readUnfilled(db, workspaceId, taskId),
     },
   };
 });
@@ -338,6 +341,8 @@ export function openStoryTasksStatement(db: OrganizationDb, workspaceId: string,
         'repositories.name as repository_name',
         ...sprintRefColumns,
       ])
+      // 決まった欄が未記入か（削除していない欄に、値の行が無いものがある）。この文は完了していないタスクだけを読む
+      .select((eb) => unfilledExists(eb, workspaceId).as('unfilled'))
       .where('tasks.completed_at', 'is', null)
       .$if(assignee !== undefined, (qb) =>
         qb.where(unindexed('tasks.assignee_user_id'), assignee === null ? 'is' : '=', assignee!),
@@ -430,6 +435,7 @@ export function rootOpenTasksStatement(db: OrganizationDb, workspaceId: string, 
         'repositories.name as repository_name',
         ...sprintRefColumns,
       ])
+      .select((eb) => unfilledExists(eb, workspaceId).as('unfilled'))
       .where('tasks.completed_at', 'is', null)
       .$if(assignee !== undefined, (qb) =>
         qb.where('tasks.assignee_user_id', assignee === null ? 'is' : '=', assignee!),
@@ -450,6 +456,21 @@ export function rootCompletedCountStatement(db: OrganizationDb, workspaceId: str
     backlogTasksUnder(q, workspaceId, null)
       .select((eb) => eb.fn.countAll<number>().as('count'))
       .where('tasks.completed_at', 'is not', null),
+  );
+}
+
+// 決まった欄が未記入の、完了していない（削除していないバックログの）タスクの件数。絞り込みに関わらず、ワークスペース全体で数える
+// （バックログの見出しの集計）。削除していない欄が無ければ、どのタスクも未記入にならず 0
+export function unfilledCountStatement(db: OrganizationDb, workspaceId: string) {
+  return db.statement((q) =>
+    q
+      .selectFrom('tasks')
+      .select((eb) => eb.fn.countAll<number>().as('count'))
+      .where('tasks.workspace_id', '=', workspaceId)
+      .where('tasks.tray', '=', 'backlog')
+      .where('tasks.deleted_at', 'is', null)
+      .where('tasks.completed_at', 'is', null)
+      .where((eb) => unfilledExists(eb, workspaceId)),
   );
 }
 
@@ -480,6 +501,7 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, actor, w
     totalsResult,
     rootOpenResult,
     rootDoneResult,
+    unfilledResult,
     assigneesResult,
   ] = await db.batch([
     db.statement((q) =>
@@ -567,6 +589,7 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, actor, w
     ),
     rootOpenTasksStatement(db, workspaceId, filter),
     rootCompletedCountStatement(db, workspaceId),
+    unfilledCountStatement(db, workspaceId),
     // 担当の絞り込みの選択肢。今所属している人（担当にできる人と同じ条件）と、未完了のバックログのタスクの担当に残っている人
     db.statement((q) =>
       q
@@ -605,6 +628,7 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, actor, w
     assignee_name: string | null;
     repository_ref_id: string | null;
     repository_name: string | null;
+    unfilled: unknown;
   } & SprintRefRow;
   type Ref = { id: string; name: string } | null;
   // category は引き継ぎを解いた区分（親のないタスクは自身の区分、ストーリーの下のタスクは親の区分）
@@ -617,6 +641,7 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, actor, w
     category,
     repository: refOf(row.repository_ref_id, row.repository_name),
     sprint: sprintRefOf(row),
+    unfilled: Number(row.unfilled) === 1,
   });
 
   // 区分は、エピック、ストーリー、タスクの順に引き継ぐ。エピックの区分を先に引いておく
@@ -730,6 +755,7 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, actor, w
     tasks: rootOpenResult.rows.map((row) => taskOf(row, refOf(row.category_ref_id, row.category_name))),
     // 絞っているときは出さない（画面は折りたたみの1行を出さない）
     completed_count: filtering ? null : Number(rootDoneResult.rows[0]?.count ?? 0),
+    unfilled_count: Number(unfilledResult.rows[0]?.count ?? 0),
     choices: {
       // 今所属している人を先に、それぞれ名前の順（並べ替えは安定）
       assignees: assigneesResult.rows

@@ -11,6 +11,7 @@ import {
   createBoardColumn,
   createCategory,
   createComment,
+  createDetailField,
   createEpic,
   createEpicPartyMember,
   createInvitation,
@@ -588,6 +589,49 @@ export const pointers: Pointers = {
     workspace_id: target.workspace.id,
     category_id: (await createCategory(target.organization, target.workspace.id, { name: `保守 ${uniqueSuffix()}` }))
       .id,
+  }),
+  'detail-field-list': async (target) => ({ workspace_id: target.workspace.id }),
+  // 名前は呼ぶたびに変える（同じ名前は 409 になる。決まった欄は 10 件までなので、呼ぶたびに作る操作は欄を足したら消す）
+  'detail-field-create': async (target) => {
+    const db = orgDb(env, target.organization.verified);
+    // 10 件に達さないよう、足す前に削除していない欄を空ける
+    await db.run(
+      db.statement((q) =>
+        q
+          .updateTable('detail_fields')
+          .set({ deleted_at: '2026-10-01T00:00:00.000Z' })
+          .where('workspace_id', '=', target.workspace.id)
+          .where('deleted_at', 'is', null),
+      ),
+    );
+    return { workspace_id: target.workspace.id, name: `完了の条件 ${uniqueSuffix()}` };
+  },
+  'detail-field-update': async (target) => ({
+    workspace_id: target.workspace.id,
+    field_id: (await createDetailField(target.organization, target.workspace.id, { name: `影響 ${uniqueSuffix()}` }))
+      .id,
+    name: `影響範囲 ${uniqueSuffix()}`,
+  }),
+  'detail-field-move': async (target) => ({
+    workspace_id: target.workspace.id,
+    field_id: (await createDetailField(target.organization, target.workspace.id, { name: `影響 ${uniqueSuffix()}` }))
+      .id,
+    after_field_id: null,
+  }),
+  // 呼ぶたびに欄を作る（削除した欄は続けて削除できない）
+  'detail-field-delete': async (target) => ({
+    workspace_id: target.workspace.id,
+    field_id: (await createDetailField(target.organization, target.workspace.id, { name: `影響 ${uniqueSuffix()}` }))
+      .id,
+  }),
+  // 呼ぶたびにタスクと欄を作り、行が無い欄に値を書く。別の組織の対象を渡すと、タスクも欄も別の組織の行なので 404
+  'task-field-set': async (target) => ({
+    workspace_id: target.workspace.id,
+    task_id: (await createTask(target.organization, target.workspace.id, target.admin.userId!)).id,
+    field_id: (await createDetailField(target.organization, target.workspace.id, { name: `影響 ${uniqueSuffix()}` }))
+      .id,
+    value_md: '- 影響する画面を挙げてある',
+    read_md: null,
   }),
   'repository-create': async (target) => ({ workspace_id: target.workspace.id, name: `shop-api-${uniqueSuffix()}` }),
   'repository-update': async (target) => ({

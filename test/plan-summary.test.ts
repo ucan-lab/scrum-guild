@@ -1,10 +1,21 @@
 // 計画の画面の集計（plan-summary）。組織の分離と権限の種類ごとの許可と拒否は、一覧を回す test/operation-registry.test.ts が確かめる。
 // ここでは数え方（ベロシティ、先のスプリントの集計、エピックの残り）を見る
+import { env } from 'cloudflare:workers';
 import { describe, expect, test } from 'vitest';
+import { orgDb } from '../src/server/db/index.ts';
 import { createApp } from '../src/server/app.ts';
 import { planSummary } from '../src/shared/operations/sprint/index.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
-import { createBoardColumn, createCompletion, createEpic, createSprint, createStory, createTask } from './factories.ts';
+import {
+  createBoardColumn,
+  createCompletion,
+  createDetailField,
+  createEpic,
+  createSprint,
+  createStory,
+  createTask,
+  createTaskFieldValue,
+} from './factories.ts';
 import { post } from './operations/harness.ts';
 import { createTarget, testEnv, type Target } from './operations/world.ts';
 
@@ -25,7 +36,13 @@ async function read(target: Target, workspaceId: string = target.workspace.id) {
       average: number | null;
       sprints: { id: string; points: number; counted: boolean; extended_days: number; start_on: string }[];
     };
-    lanes: { sprint_id: string; points: number; task_count: number; unestimated_count: number }[];
+    lanes: {
+      sprint_id: string;
+      points: number;
+      task_count: number;
+      unestimated_count: number;
+      unfilled_count: number;
+    }[];
     epics: { id: string; title: string; due_on: string | null; points_done: number; points_all: number }[];
   };
 }
@@ -231,10 +248,58 @@ describe('plan-summary の先のスプリントの集計', () => {
     await put(active.id, { points: null });
     const body = await read(target);
     expect(body.lanes).toEqual([
-      { sprint_id: planned.id, points: 8, task_count: 3, unestimated_count: 1 },
-      { sprint_id: active.id, points: 2, task_count: 4, unestimated_count: 2 },
-      { sprint_id: empty.id, points: 0, task_count: 0, unestimated_count: 0 },
+      { sprint_id: planned.id, points: 8, task_count: 3, unestimated_count: 1, unfilled_count: 0 },
+      { sprint_id: active.id, points: 2, task_count: 4, unestimated_count: 2, unfilled_count: 0 },
+      { sprint_id: empty.id, points: 0, task_count: 0, unestimated_count: 0, unfilled_count: 0 },
     ]);
+  });
+
+  test('決まった欄が未記入の完了していないタスクの件数を返す。完了したタスクと削除した欄は数えない', async () => {
+    const target = await createTarget();
+    const userId = target.member.userId!;
+    const planned = await createSprint(target.organization, target.workspace.id, { status: 'planned', ...period() });
+    const empty = await createSprint(target.organization, target.workspace.id, { status: 'planned', ...period() });
+    const column = await createBoardColumn(target.organization, target.workspace.id);
+    const put = (overrides: Parameters<typeof createTask>[3]) =>
+      createTask(target.organization, target.workspace.id, userId, {
+        sprint_id: planned.id,
+        column_id: column.id,
+        column_position: 'a0',
+        ...overrides,
+      });
+    // 欄が無い間は、どのタスクも未記入にならない
+    await put({});
+    expect((await read(target)).lanes.map((lane) => lane.unfilled_count)).toEqual([0, 0]);
+
+    const first = await createDetailField(target.organization, target.workspace.id, { name: '受け入れ基準' });
+    const second = await createDetailField(target.organization, target.workspace.id, {
+      name: '影響範囲',
+      position: 'a1',
+    });
+    const none = await put({});
+    const partly = await put({});
+    const filled = await put({});
+    const done = await put({ completed_at: '2026-10-21T00:00:00.000Z' });
+    void none;
+    void done;
+    await createTaskFieldValue(target.organization, partly.id, first.id, userId);
+    await createTaskFieldValue(target.organization, filled.id, first.id, userId);
+    await createTaskFieldValue(target.organization, filled.id, second.id, userId);
+    // 値の無いタスク 2 件（前に作った 1 件を含む）と、一部だけ書いたタスク 1 件が未記入。全部書いたタスクと完了したタスクは数えない
+    const body = await read(target);
+    expect(body.lanes).toEqual([
+      expect.objectContaining({ sprint_id: planned.id, unfilled_count: 3 }),
+      expect.objectContaining({ sprint_id: empty.id, unfilled_count: 0 }),
+    ]);
+
+    // 欄を削除すると、その欄は判定から外れる（値の行は残る）。一部だけ書いたタスクも、残った欄が埋まっていれば未記入でなくなる
+    const db = orgDb(env, target.organization.verified);
+    await db.run(
+      db.statement((q) =>
+        q.updateTable('detail_fields').set({ deleted_at: '2026-10-22T00:00:00.000Z' }).where('id', '=', second.id),
+      ),
+    );
+    expect((await read(target)).lanes[0]?.unfilled_count).toBe(2);
   });
 
   test('終了したスプリントと削除したスプリント、ほかのワークスペースのスプリントは出さない', async () => {

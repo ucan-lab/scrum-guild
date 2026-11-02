@@ -59,6 +59,11 @@ import {
   categoryMoveOperation,
   categoryRepositoryListOperation,
   categoryUpdateOperation,
+  detailFieldCreateOperation,
+  detailFieldDeleteOperation,
+  detailFieldListOperation,
+  detailFieldMoveOperation,
+  detailFieldUpdateOperation,
   repositoryCreateOperation,
   repositoryDeleteOperation,
   repositoryMoveOperation,
@@ -80,6 +85,7 @@ import {
   storyUpdateOperation,
 } from './story.ts';
 import { taskAssignOperation, taskDeleteOperation, taskDetailOperation, taskUpdateOperation } from './task-edit.ts';
+import { taskFieldSetOperation } from './task-field.ts';
 import { taskTodayMarkOperation } from './task-today-mark.ts';
 import { taskHistoryOperation } from './task-history.ts';
 import {
@@ -207,6 +213,12 @@ const listedOperations: readonly ImplementedOperation[] = [
   repositoryUpdateOperation,
   repositoryMoveOperation,
   repositoryDeleteOperation,
+  detailFieldListOperation,
+  detailFieldCreateOperation,
+  detailFieldUpdateOperation,
+  detailFieldMoveOperation,
+  detailFieldDeleteOperation,
+  taskFieldSetOperation,
   columnListOperation,
   columnCreateOperation,
   columnUpdateOperation,

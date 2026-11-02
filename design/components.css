@@ -386,7 +386,7 @@ h1, h2, h3 { text-wrap: balance; }
 
 /* ===== 入力 ===== */
 .field { display: grid; gap: 6px; }
-.field-label { font-size: var(--text-sm); font-weight: 700; }
+.field-label { font-size: var(--text-sm); font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
 .field-hint { font-size: var(--text-xs); color: var(--color-muted); }
 /* 出し入れする説明は、要らないとき aria-hidden="true" にして文を描いたまま隠す。行数に頼らず高さを保ち、縦中央の紙（.gate）が縮んで押した位置の下の部品が動くのを防ぐ */
 .field-hint.is-reserved { display: block; }

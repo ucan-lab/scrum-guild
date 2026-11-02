@@ -8,6 +8,7 @@ import { taskComplete } from './task-complete.ts';
 import { taskCreate } from './task-create.ts';
 import { taskDelete } from './task-delete.ts';
 import { taskDetail } from './task-detail.ts';
+import { taskFieldSet } from './task-field-set.ts';
 import { taskHistory } from './task-history.ts';
 import { taskMove } from './task-move.ts';
 import { taskReopen } from './task-reopen.ts';
@@ -30,12 +31,20 @@ export {
   taskCreate,
   taskDelete,
   taskDetail,
+  taskFieldSet,
   taskHistory,
   taskMove,
   taskReopen,
   taskTodayMark,
   taskUpdate,
 };
+export {
+  taskFieldConflictReasonOf,
+  taskFieldConflictReasons,
+  type TaskFieldConflictReason,
+  type TaskFieldValue,
+  taskFieldValueSchema,
+} from './task-field-set.ts';
 export { taskReopenConflictReasonOf, taskReopenConflictReasons, type TaskReopenConflictReason } from './task-reopen.ts';
 export {
   taskTodayMarkConflictReasonOf,
@@ -61,6 +70,7 @@ export const taskOperations: readonly AnyOperationDefinition[] = [
   taskReopen,
   taskDetail,
   taskUpdate,
+  taskFieldSet,
   taskAssign,
   taskTodayMark,
   taskDelete,

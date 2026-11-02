@@ -32,6 +32,7 @@ import {
   createSprintEntry,
   createStory,
   createTask,
+  createTaskFieldValue,
   createThanks,
   createUser,
   createWorkspace,
@@ -72,7 +73,7 @@ async function fillOrganization(organization: Awaited<ReturnType<typeof createOr
   await createMembership(organization, ws, member.id);
   await createInvitation(organization, ws, admin.id, { provider: 'github', subject: String(Date.now()) });
   const column = await createBoardColumn(organization, ws);
-  await createDetailField(organization, ws);
+  const field = await createDetailField(organization, ws);
   const category = await createCategory(organization, ws);
   const repository = await createRepository(organization, ws);
   const epic = await createEpic(organization, ws, admin.id, { category_id: category.id });
@@ -88,6 +89,7 @@ async function fillOrganization(organization: Awaited<ReturnType<typeof createOr
     assignee_user_id: member.id,
   });
   await createSprintEntry(organization, ws, sprint.id, task.id, admin.id);
+  await createTaskFieldValue(organization, task.id, field.id, member.id);
   // 討伐隊は workspace_id を持たず、エピックを通して組織に結ぶ
   await createEpicPartyMember(organization, epic.id, member.id, { added_by: admin.id });
   await createThanks(organization, ws, task.id, admin.id, member.id);

@@ -872,6 +872,61 @@ describe('comments', () => {
   });
 });
 
+describe('task_field_values', () => {
+  async function setup() {
+    const { userId, workspaceId } = await workspace();
+    const taskId = id();
+    await run(
+      `INSERT INTO tasks (id, workspace_id, is_imported, tray, title, position, created_by, created_at, updated_at) VALUES (?, ?, 0, 'backlog', 'タスク', 'a0', ?, ?, ?)`,
+      taskId,
+      workspaceId,
+      userId,
+      AT,
+      AT,
+    );
+    const fieldId = id();
+    await run(
+      `INSERT INTO detail_fields (id, workspace_id, name, position, created_at, updated_at) VALUES (?, ?, '受け入れ基準', 'a0', ?, ?)`,
+      fieldId,
+      workspaceId,
+      AT,
+      AT,
+    );
+    return { userId, taskId, fieldId };
+  }
+
+  function value(columns: { taskId: string; fieldId: string; userId: string; body?: string }) {
+    return run(
+      `INSERT INTO task_field_values (task_id, field_id, value_md, updated_by, updated_at) VALUES (?, ?, ?, ?, ?)`,
+      columns.taskId,
+      columns.fieldId,
+      columns.body ?? '- 確かめる手順がある',
+      columns.userId,
+      AT,
+    );
+  }
+
+  test('1 タスクの 1 つの欄に値は 1 行。別の欄は書ける', async () => {
+    const { userId, taskId, fieldId } = await setup();
+    await expect(value({ taskId, fieldId, userId })).resolves.toBeTruthy();
+    await expect(value({ taskId, fieldId, userId })).rejects.toThrow(/UNIQUE|PRIMARY/);
+  });
+
+  test('値は空にできず（空は行を消す）、10 万字まで。字数はコードポイントで数える', async () => {
+    const { userId, taskId, fieldId } = await setup();
+    await expect(value({ taskId, fieldId, userId, body: '' })).rejects.toThrow(/CHECK/);
+    await expect(value({ taskId, fieldId, userId, body: 'あ'.repeat(100_001) })).rejects.toThrow(/CHECK/);
+    await expect(value({ taskId, fieldId, userId, body: '😀'.repeat(100_000) })).resolves.toBeTruthy();
+  });
+
+  test('無いタスク、無い欄、無い人を指せない', async () => {
+    const { userId, taskId, fieldId } = await setup();
+    await expect(value({ taskId: id(), fieldId, userId })).rejects.toThrow(/FOREIGN KEY/);
+    await expect(value({ taskId, fieldId: id(), userId })).rejects.toThrow(/FOREIGN KEY/);
+    await expect(value({ taskId, fieldId, userId: id() })).rejects.toThrow(/FOREIGN KEY/);
+  });
+});
+
 describe('sprint_entries', () => {
   async function taskAndSprint() {
     const { userId, workspaceId } = await workspace();

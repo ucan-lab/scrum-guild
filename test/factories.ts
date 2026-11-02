@@ -549,6 +549,27 @@ export async function createDetailField(
   return row;
 }
 
+// タスクの決まった欄の値。主キー（タスクと欄）にぶつかるなら、別の欄を渡す
+export async function createTaskFieldValue(
+  organization: OrganizationFixture,
+  taskId: string,
+  fieldId: string,
+  updatedBy: string,
+  overrides: Partial<Row<OrganizationTables, 'task_field_values'>> = {},
+) {
+  const row: Row<OrganizationTables, 'task_field_values'> = {
+    task_id: taskId,
+    field_id: fieldId,
+    value_md: '- 影響する画面を挙げてある',
+    updated_by: updatedBy,
+    updated_at: AT,
+    ...overrides,
+  };
+  const db = orgDb(env, organization.verified);
+  await db.run(db.statement((q) => q.insertInto('task_field_values').values(row)));
+  return row;
+}
+
 // ポイントあたりの時間。主キー（ワークスペースと月）にぶつかるなら月を渡す
 export async function createWorkspacePointRate(
   organization: OrganizationFixture,

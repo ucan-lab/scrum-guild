@@ -58,6 +58,8 @@
       category: null,
       repository: task.repository,
       sprint: task.sprint,
+      // 今日やることの行には未記入の印を出さない（決まった欄の未記入は、バックログの木と引き出しと計画の画面に出す）
+      unfilled: false,
     };
   }
 

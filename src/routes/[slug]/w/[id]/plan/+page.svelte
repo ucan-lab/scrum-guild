@@ -365,6 +365,10 @@
               {#if lane !== undefined && lane.unestimated_count > 0}
                 <span data-lane-unestimated>{t('planUnestimated', { count: lane.unestimated_count })}</span>
               {/if}
+              <!-- 入っている完了していないタスクのうち、決まった欄が未記入のもの（入れる操作は止めない） -->
+              {#if lane !== undefined && lane.unfilled_count > 0}
+                <span data-lane-unfilled>{t('planUnfilled', { detail: t('detail'), count: lane.unfilled_count })}</span>
+              {/if}
             </div>
             {#if isOverdue(sprint)}
               <SprintOverdueNotice
