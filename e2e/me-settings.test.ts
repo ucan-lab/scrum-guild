@@ -1,4 +1,4 @@
-// 自分の設定の画面の「テーマ」の節と「届いた招待」、左のメニューの招待の件数（#674）。
+// マイプロフィールの画面の「テーマ」の節と「届いた招待」、アカウントのメニューの招待の点と件数（#674）。
 // テーマは、あおば開発の一般のユーザー（ハルカ、seed/sessions.ts の member）の users.theme を本物の API で書く。ほかのファイルが
 // 同じ人でテーマを見ることはないが、書いたテーマはテストの終わりに「組織の既定に従う」へ戻す。
 // 招待は seed に、あおば開発の一般のユーザーへ届いたものが無いので、招待の一覧（invitation-list）と組織の選択（my-organizations）の応答を差し替える。
@@ -47,7 +47,8 @@ test.describe('テーマの節（ハルカ）', () => {
       await page.locator('.nav-item', { hasText: '今日やること' }).click();
       await expect(page).toHaveURL(/\/aoba$/);
       expect(await htmlTheme(page)).toBe('medieval');
-      await page.locator('.nav-item', { hasText: '自分の設定' }).click();
+      await page.getByRole('button', { name: /アカウントのメニュー$/ }).click();
+      await page.locator('.account-menu-list').getByRole('link', { name: 'マイプロフィール', exact: true }).click();
       await expect(themeSection(page).getByRole('radio', { name: /^中世風/ })).toBeChecked();
 
       // 「組織の既定に従う」を選ぶと、組織の既定に戻る
@@ -166,41 +167,46 @@ async function stubInvitations(page: Page, state: { invitations: InboxInvitation
   });
 }
 
-const navItem = (page: Page) => page.locator('.nav-item', { hasText: '自分の設定' });
+const accountButton = (page: Page) => page.getByRole('button', { name: /アカウントのメニュー$/ });
+const profileItem = (page: Page) => page.locator('.account-menu-list a', { hasText: 'マイプロフィール' });
+const inviteDot = (page: Page) => accountButton(page).locator('.account-menu-invite');
 
 test.describe('届いた招待（ハルカ）', () => {
   test.beforeEach(async ({ context, baseURL }) => {
     await signIn(context, baseURL, 'member');
   });
 
-  test('招待が届いていると、メニューの「自分の設定」に件数が付き、畳むと点になる。招待が無ければ何も付かない', async ({
-    page,
-  }) => {
-    const state = {
-      invitations: [invitation(), invitation({ invitation_id: '019a0000-0000-7000-8000-00000000fb02' })],
-    };
-    await stubInvitations(page, state);
-    await page.goto('/aoba');
-    await expect(page.getByRole('heading', { level: 1, name: '今日やること' })).toBeVisible();
-    await expect(navItem(page).locator('.nav-badge')).toHaveText('招待 2');
-    await expect(navItem(page)).toContainText('、届いた招待 2件');
-    await expect(navItem(page).locator('.nav-item-invite')).toBeHidden();
+  for (const width of [390, 1280]) {
+    test(`${width}px: 招待が届くとボタンに点と項目に件数が出る。ボタンの読み上げは変わらず、招待が無ければ何も出ない`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 800 });
+      const state = {
+        invitations: [invitation(), invitation({ invitation_id: '019a0000-0000-7000-8000-00000000fb02' })],
+      };
+      await stubInvitations(page, state);
+      await page.goto('/aoba');
+      await expect(page.getByRole('heading', { level: 1, name: '今日やること' })).toBeVisible();
+      await expect(inviteDot(page)).toBeVisible();
+      await expect(inviteDot(page)).toHaveAttribute('aria-hidden', 'true');
+      await expect(accountButton(page)).toHaveAccessibleName('ハルカ。アカウントのメニュー');
+      await accountButton(page).click();
+      await expect(profileItem(page).locator('.account-menu-badge')).toHaveText('招待 2');
+      await expect(profileItem(page)).toHaveAccessibleName(/マイプロフィール\s*、届いた招待 2件/);
+      await expect(profileItem(page).locator('.account-menu-badge')).toHaveAttribute('aria-hidden', 'true');
 
-    // 畳んだ列では件数を隠し、点を出す。項目の名前には件数が残る
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await page.getByRole('button', { name: 'メニューを畳む' }).click();
-    await expect(navItem(page).locator('.nav-item-invite')).toBeVisible();
-    await expect(navItem(page).locator('.nav-badge')).toBeHidden();
-    await page.getByRole('button', { name: 'メニューを広げる' }).click();
+      state.invitations = [];
+      await page.reload();
+      await expect(page.getByRole('heading', { level: 1, name: '今日やること' })).toBeVisible();
+      await expect(inviteDot(page)).toHaveCount(0);
+      await expect(accountButton(page)).toHaveAccessibleName('ハルカ。アカウントのメニュー');
+      await accountButton(page).click();
+      await expect(profileItem(page).locator('.account-menu-badge')).toHaveCount(0);
+      await expect(profileItem(page)).toHaveAccessibleName('マイプロフィール');
+    });
+  }
 
-    state.invitations = [];
-    await page.reload();
-    await expect(page.getByRole('heading', { level: 1, name: '今日やること' })).toBeVisible();
-    await expect(navItem(page).locator('.nav-badge')).toHaveCount(0);
-    await expect(navItem(page).locator('.nav-item-invite')).toHaveCount(0);
-  });
-
-  test('自分の設定に招待が並び、辞退すると一覧とメニューの件数が減る。最後の1件を辞退すると何も出ない', async ({
+  test('マイプロフィールに招待が並び、辞退すると一覧とメニューの件数が減る。最後の1件を辞退すると何も出ない', async ({
     page,
   }) => {
     const first = invitation();
@@ -218,7 +224,7 @@ test.describe('届いた招待（ハルカ）', () => {
     });
     const collect = await watchViolations(page);
     await page.goto('/aoba/me');
-    await expect(page.getByRole('heading', { level: 1, name: '自分の設定' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'マイプロフィール' })).toBeVisible();
 
     const rows = page.locator('.callout.is-info[data-invitation-row]');
     await expect(rows).toHaveCount(2);
@@ -226,21 +232,25 @@ test.describe('届いた招待（ハルカ）', () => {
       'あおば開発のリンさんから「保守チーム」への招待が届いています（一般、2026-10-19）。',
     );
     await expect(rows.last()).toContainText('「改善チーム」への招待が届いています（リーダー、2026-10-19）。');
-    await expect(navItem(page).locator('.nav-badge')).toHaveText('招待 2');
+    await accountButton(page).click();
+    await expect(profileItem(page).locator('.account-menu-badge')).toHaveText('招待 2');
+    await accountButton(page).click();
     await expect(page.getByRole('button', { name: '保守チームへの招待を承諾する' })).toBeVisible();
 
     await page.getByRole('button', { name: '保守チームへの招待を辞退する' }).click();
     await expect(page.locator('.toasts:visible .toast')).toContainText('招待を辞退しました');
     await expect(rows).toHaveCount(1);
     await expect(rows.first()).toContainText('「改善チーム」');
-    await expect(navItem(page).locator('.nav-badge')).toHaveText('招待 1');
+    await expect(inviteDot(page)).toBeVisible();
+    await expect(profileItem(page).locator('.account-menu-badge')).toHaveText('招待 1');
     // 残った招待のボタンへフォーカスが移る
     await expect(page.getByRole('button', { name: '改善チームへの招待を承諾する' })).toBeFocused();
 
     await page.getByRole('button', { name: '改善チームへの招待を辞退する' }).click();
     await expect(rows).toHaveCount(0);
-    await expect(navItem(page).locator('.nav-badge')).toHaveCount(0);
-    await expect(page.getByRole('heading', { level: 1, name: '自分の設定' })).toBeFocused();
+    await expect(profileItem(page).locator('.account-menu-badge')).toHaveCount(0);
+    await expect(inviteDot(page)).toHaveCount(0);
+    await expect(page.getByRole('heading', { level: 1, name: 'マイプロフィール' })).toBeFocused();
     // 招待が無くなっても、ほかの節は残る
     await expect(themeSection(page)).toBeVisible();
     await expect(page.getByRole('heading', { level: 2, name: '経験値の明細' })).toBeVisible();
@@ -271,6 +281,8 @@ test.describe('届いた招待（ハルカ）', () => {
     await page.getByRole('button', { name: '保守チームへの招待を承諾する' }).click();
     await expect(page).toHaveURL(new RegExp(`/aoba/w/${AOBA_WORKSPACE_ID}$`));
     await expect(page.locator('.toasts:visible .toast')).toContainText('招待を承諾しました');
+    await expect(inviteDot(page)).toHaveCount(0);
+    await expect(profileItem(page).locator('.account-menu-badge')).toHaveCount(0);
   });
 
   test('承諾が失敗したら理由を出して一覧を読み直す。一覧が読めないときは失敗とやり直しを出し、ほかの節は残る', async ({

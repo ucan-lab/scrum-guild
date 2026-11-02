@@ -24,7 +24,7 @@
   import type { DictionaryKey } from '../../../shared/vocabulary.ts';
   import type { PageProps } from './$types';
 
-  // 自分の設定の画面（me.html）。今は「届いた招待」（MeInvitations。本文の先頭に囲みの知らせで）、「テーマ」の節（MeThemeSetting。選んだ瞬間に保存する）、
+  // マイプロフィールの画面（me.html）。今は「届いた招待」（MeInvitations。本文の先頭に囲みの知らせで）、「テーマ」の節（MeThemeSetting。選んだ瞬間に保存する）、
   // 経験値、API トークン（ApiTokensSetting）の節で、ほかの節（1日の基準、稼働期間、休み、月の基準の上書き、積載量の合計）は #66 で足す
   // （まだ無いことを本文の先頭に1行で知らせる）。テーマは組織の枠が読んだ値（自分のテーマと組織の既定）を受け取る。
   // 横（layout-side）にレベルの面（LevelPanel。合計、レベル、次のレベルまで、見込み、ゲージ、ワークスペースごとの内訳）、
@@ -261,7 +261,12 @@
   </aside>
 </div>
 
-<ApiTokensSetting initial={data.tokens} />
+<ApiTokensSetting
+  initial={data.tokens}
+  canCreate={data.canCreateToken}
+  loginProvider={data.loginProvider}
+  slug={data.slug}
+/>
 
 <Section id={LEDGER_ID} title={t('meExperienceTitle')}>
   <p class="action-note">{t('meExperienceDescription')}</p>

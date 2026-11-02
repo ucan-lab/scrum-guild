@@ -23,7 +23,7 @@ const MEMBER_STEPS: FirstStep[] = [
 
 const LEADER_STEPS: FirstStep[] = [
   step('became_leader', true),
-  step('invite_members', false),
+  step('invite_members', false, { optional: true }),
   step('first_backlog_task', false),
   step('start_sprint', false, { optional: true }),
 ];
@@ -97,7 +97,7 @@ test.describe('リーダー', () => {
     await signIn(context, baseURL, 'admin');
   });
 
-  test('招待とバックログの最初のタスクが必須で、スプリントは任意。主ボタンは最初の未完の手順にだけ付く', async ({
+  test('バックログの最初のタスクだけが必須で、招待とスプリントは任意。主ボタンは最初の未完の必須の手順にだけ付く', async ({
     page,
   }) => {
     await mockOperation(page, firstSteps, { slug: 'aoba' }, { role: 'leader', steps: LEADER_STEPS });
@@ -109,9 +109,16 @@ test.describe('リーダー', () => {
       /バックログに最初のタスクを入れる/,
       /最初のスプリントを作って始める/,
     ]);
-    await expect(panel(page).locator('.step-title .chip')).toHaveText(['任意']);
+    await expect(panel(page).locator('.step-title .chip')).toHaveText(['任意', '任意']);
+    // 「任意」は招待の行とスプリントの行に付く。必須のバックログの行には付かない
+    await expect(panel(page).locator('.step', { hasText: 'メンバーを招待する' }).locator('.chip')).toHaveText('任意');
+    await expect(
+      panel(page).locator('.step', { hasText: 'バックログに最初のタスクを入れる' }).locator('.chip'),
+    ).toHaveCount(0);
     await expect(panel(page).locator('.btn.is-primary')).toHaveCount(1);
-    await expect(panel(page).getByRole('link', { name: 'メンバーを招待する' })).toHaveClass(/is-primary/);
+    // 任意の招待ではなく、必須のバックログの行のボタンが主ボタンになる
+    await expect(panel(page).getByRole('link', { name: 'メンバーを招待する' })).not.toHaveClass(/is-primary/);
+    await expect(panel(page).getByRole('link', { name: 'バックログを開く' })).toHaveClass(/is-primary/);
     await expect(panel(page).getByRole('link', { name: '計画を開く' })).not.toHaveClass(/is-primary/);
   });
 

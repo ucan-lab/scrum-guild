@@ -72,7 +72,7 @@ export const dictionary = defineDictionary({
   // メニューの項目と見出し。ワークスペースの外の画面は organization
   pageToday: '今日やること',
   pageNotifications: '通知',
-  pageMe: '自分の設定',
+  pageMe: 'マイプロフィール',
   pageOrgAdmin: '組織の管理',
   pageRecords: '完了の記録',
   pageMembers: 'メンバー',
@@ -1798,7 +1798,7 @@ export const dictionary = defineDictionary({
   retrySection: 'もう一度試す（{section}）',
   meOtherSettingsNote:
     '今は経験値、API トークン、テーマ、届いた招待を扱えます。1日の基準、稼働期間、休み、月の基準の上書き、積載量の合計は、これから足します。',
-  // 自分のテーマ（自分の設定の節。選んだ瞬間に保存する）。{admin} は管理者、{organization} は組織、{label} はテーマの名前
+  // 自分のテーマ（マイプロフィールの節。選んだ瞬間に保存する）。{admin} は管理者、{organization} は組織、{label} はテーマの名前
   meThemeDesc:
     '画面の見た目。選ぶとすぐに変わります。自分で選ばなければ、{admin}が決めた{organization}の既定に従います。',
   meThemeFollow: '{organization}の既定に従う',
@@ -1807,14 +1807,14 @@ export const dictionary = defineDictionary({
   meThemeChanged: 'テーマを「{label}」に変えました',
   meThemeFollowed: 'テーマを{organization}の既定に戻しました',
   meThemeFailed: 'テーマを変えられませんでした。もう一度試してください。',
-  // 自分の設定の「届いた招待」（この組織のワークスペースへの招待。別の組織の招待は組織の切り替えから）。
+  // マイプロフィールの「届いた招待」（この組織のワークスペースへの招待。別の組織の招待は組織の切り替えから）。
   // {organization} は組織の名前、{inviter} は招待した人の名前、{workspace} はワークスペースの名前、{role} はロール、{date} は招待した日
   meInvitationLine: '{organization}の{inviter}さんから「{workspace}」への招待が届いています（{role}、{date}）。',
   meInvitationsFailed: '届いた招待を読み込めませんでした',
-  // 左のメニューの「自分の設定」に付ける、届いた招待の件数。{count} は件数
+  // アカウントのメニューの「マイプロフィール」に付ける、届いた招待の件数。{count} は件数
   navInvitationsBadge: '招待 {count}',
   navInvitationsLabel: '、届いた招待 {count}件',
-  // API トークン（自分の設定の節。docs/development.md の「API トークン」）。組織の外の画面なので、言葉は organization
+  // API トークン（マイプロフィールの節。docs/development.md の「API トークン」）。組織の外の画面なので、言葉は organization
   apiTokenTitle: 'API トークン',
   apiTokenDesc: 'CLI や MCP に渡す鍵。発行した人と同じ権限の範囲で、画面を通さずに API を呼べます。',
   apiTokenFormLabel: 'API トークンの発行',
@@ -1828,6 +1828,9 @@ export const dictionary = defineDictionary({
   apiTokenLifetimeHint: '1〜{max}日。期限が来ると使えなくなります',
   apiTokenCreate: '発行する',
   apiTokenCreating: '発行しています',
+  apiTokenReauthRequired:
+    'API トークンを発行するには、ログインし直してください。発行はログインから{minutes}分以内に限られます。',
+  apiTokenReauth: 'ログインし直す',
   apiTokenNameRequired: '名前を入力してください',
   apiTokenNameTooLong: '名前は{max}文字までです',
   apiTokenLifetimeInvalid: '有効日数は1〜{max}の整数で入力してください',
@@ -1856,7 +1859,7 @@ export const dictionary = defineDictionary({
   apiTokenRevoked: '「{name}」を取り消しました',
   apiTokenRevokeFailed: '取り消せませんでした。時間をおいて、もう一度試してください',
   apiTokenEmptyTitle: '発行済みの API トークンはありません',
-  apiTokenEmptyText: '上のフォームで発行すると、ここに並びます。',
+  apiTokenEmptyText: '発行すると、ここに並びます。',
   apiTokenLoadFailed: 'API トークンを読み込めませんでした',
   xpLedgerFailedTitle: '経験値の明細を読み込めませんでした',
   xpLoadMore: '続きを読む',

@@ -46,7 +46,7 @@ h1, h2, h3 { text-wrap: balance; }
   padding-left: max(var(--space-4), env(safe-area-inset-left, 0px));
   padding-right: var(--space-4);
   display: flex; flex-direction: column; gap: var(--space-5);
-  position: sticky; top: 0; height: 100vh;
+  position: sticky; top: 0; height: 100vh; height: 100dvh; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin;
 }
 .binding-foot { margin-top: auto; font-size: var(--text-xs); color: var(--color-faint); padding-inline: var(--space-2); }
 
@@ -79,8 +79,6 @@ h1, h2, h3 { text-wrap: balance; }
 .nav-item[aria-current="page"] .ico { color: var(--color-accent); }
 .nav-item-label { min-width: 0; }
 .nav-badge { margin-left: auto; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-muted); }
-/* 届いた招待の印（自分の設定の項目）。件数は .nav-badge、畳んだ列では件数を隠して、この点を項目の角に出す */
-.nav-item-invite { display: none; }
 /* 組織とワークスペースの切り替え。共通のボタンとリンクの一覧。
    選ぶと画面が移るので select にしない（矢印キーで選んだだけで移ってしまう）。
    組織は狭い幅でも出し、ワークスペースは760px以下と畳んだ列で隠す。 */
@@ -106,14 +104,14 @@ h1, h2, h3 { text-wrap: balance; }
   border-radius: var(--radius-1); border: 1px solid var(--color-line); background: var(--color-surface);
 }
 :is(.org-menu-list, .ws-menu-list)[hidden], .account-menu-list[hidden] { display: none; }
-:is(.org-menu-list, .ws-menu-list) a, :is(.org-menu-list, .ws-menu-list) button, .account-menu-list button {
+:is(.org-menu-list, .ws-menu-list) a, :is(.org-menu-list, .ws-menu-list) button, .account-menu-list a, .account-menu-list button {
   display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--space-2);
   padding: 7px var(--space-2); border-radius: var(--radius-1); color: var(--color-fg); text-decoration: none;
 }
 :is(.org-menu-list, .ws-menu-list) button, .account-menu-list button { width: 100%; border: 0; background: none; text-align: left; }
-:is(.org-menu-list, .ws-menu-list) a:hover, :is(.org-menu-list, .ws-menu-list) button:hover, .account-menu-list button:hover:not([aria-disabled="true"]) { background: var(--color-rule); }
+:is(.org-menu-list, .ws-menu-list) a:hover, :is(.org-menu-list, .ws-menu-list) button:hover, .account-menu-list a:hover, .account-menu-list button:hover:not([aria-disabled="true"]) { background: var(--color-rule); }
 .account-menu-list button[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
-:is(.org-menu-list, .ws-menu-list) a[aria-current="page"] { background: var(--color-sunken); font-weight: 700; box-shadow: 0 0 0 1px var(--color-line); }
+:is(.org-menu-list, .ws-menu-list) a[aria-current="page"], .account-menu-list a[aria-current="page"] { background: var(--color-sunken); font-weight: 700; box-shadow: 0 0 0 1px var(--color-line); }
 :is(.org-menu-list, .ws-menu-list) a .ico { margin-left: auto; color: var(--color-accent); }
 .org-menu-name { min-width: 0; overflow-wrap: anywhere; }
 /* 所属していない管理者が開いているワークスペースの名前。押せない行だが、現在地は所属先の現在地と同じ形（背景、太字、枠、チェック）で示す。 */
@@ -124,7 +122,7 @@ h1, h2, h3 { text-wrap: balance; }
 :is(.org-menu-list, .ws-menu-list) .is-aside a, :is(.org-menu-list, .ws-menu-list) .is-aside button { color: var(--color-muted); }
 /* 狭い幅と、指で押す画面では、押す所を 44px 以上にする。左のメニューのロゴと項目（狭い幅では上の帯に並ぶ）も同じ */
 @media (max-width: 760px), (pointer: coarse) {
-  :is(.org-menu-list, .ws-menu-list) a, :is(.org-menu-list, .ws-menu-list) button, .account-menu-list button, .account-menu-button { min-height: 44px; }
+  :is(.org-menu-list, .ws-menu-list) a, :is(.org-menu-list, .ws-menu-list) button, .account-menu-list a, .account-menu-list button, .account-menu-button { min-height: 44px; }
   .nav-toggle { width: 44px; height: 44px; }
   .brand, .nav-item:not(.is-later) { min-height: 44px; }
 }
@@ -144,6 +142,15 @@ h1, h2, h3 { text-wrap: balance; }
     overflow-wrap: anywhere;
   }
   .nav-tip small { color: var(--color-muted); }
+  /* 列は中で縦に送るので、浮かせた札は列のスクロール領域に切られず、スクロールに追従させる。
+     fixed とアンカーはセットで当てる（fixed だけだと、送った量だけ元の位置に残る）。
+     アンカー位置指定に対応しないブラウザは、畳んだ列を縦に送らず（下の @supports not）、上の absolute のまま出す */
+  @supports (anchor-scope: --nav-hit) {
+    .nav-toggle { anchor-name: --nav-hit; anchor-scope: --nav-hit; }
+    .nav-tip {
+      position: fixed; position-anchor: --nav-hit; left: calc(anchor(right) + var(--space-3)); top: anchor(center);
+    }
+  }
 }
 /* ホバーのできない端末（指だけのタブレットなど）では畳まない。畳んだ列の名前は、ホバーとキーボードのフォーカスでしか見えないため。
    760px 以下と同じく開閉のボタンを出さず、覚えた状態も当てずに広げた列で出す */
@@ -197,7 +204,6 @@ h1, h2, h3 { text-wrap: balance; }
   .app[data-nav-collapsed="true"] .nav-item-label { opacity: 0; }
   .app[data-nav-collapsed="true"] .nav-item:focus-visible .nav-item-label { opacity: 1; }
   .app[data-nav-collapsed="true"] .nav-group { height: 1px; margin: var(--space-3) 0; padding: 0; border-top: 1px solid var(--color-line); }
-  .app[data-nav-collapsed="true"] .org-menu { position: relative; }
   .app[data-nav-collapsed="true"] .org-menu-button { position: relative; display: flex; align-items: center; padding: 0; }
   .app[data-nav-collapsed="true"] .org-menu-button > .ico:first-of-type { display: block; transform: none; }
   .app[data-nav-collapsed="true"] .org-menu-button > .ico:last-of-type { display: none; }
@@ -206,13 +212,30 @@ h1, h2, h3 { text-wrap: balance; }
     display: block; position: absolute; top: 7px; right: 7px; width: 8px; height: 8px;
     border-radius: 50%; border: 1px solid var(--color-stamp); background: var(--color-stamp); box-shadow: 0 0 0 2px var(--color-surface);
   }
-  .app[data-nav-collapsed="true"] .nav-item-invite {
-    display: block; position: absolute; top: 7px; right: 7px; width: 8px; height: 8px;
-    border-radius: 50%; border: 1px solid var(--color-stamp); background: var(--color-stamp); box-shadow: 0 0 0 2px var(--color-surface);
-  }
+  .app[data-nav-collapsed="true"] .org-menu { position: relative; }
   .app[data-nav-collapsed="true"] .org-menu-list {
     position: absolute; z-index: 1; top: 0; left: calc(100% + var(--space-3)); width: 15rem; max-width: min(18rem, 70vw);
     box-shadow: var(--shadow-float);
+  }
+  /* 項目の札、組織ボタンの札、組織の一覧も、fixed とアンカーをセットで当てて列のスクロールに追従させる
+     （非対応のブラウザは上の absolute のまま）。一覧が画面の下に出るときは、ボタンの下端に揃えて上へ開く */
+  @supports (anchor-scope: --nav-hit) {
+    .app[data-nav-collapsed="true"] .nav-item { anchor-name: --nav-hit; anchor-scope: --nav-hit; }
+    .app[data-nav-collapsed="true"] .nav-item-label {
+      position: fixed; position-anchor: --nav-hit; left: calc(anchor(right) + var(--space-3)); top: anchor(center);
+    }
+    .app[data-nav-collapsed="true"] .org-menu { anchor-scope: --org-hit; }
+    .app[data-nav-collapsed="true"] .org-menu-button { anchor-name: --org-hit; }
+    .app[data-nav-collapsed="true"] .org-menu-button .nav-tip { position-anchor: --org-hit; }
+    .app[data-nav-collapsed="true"] .org-menu-list {
+      position: fixed; position-anchor: --org-hit; left: calc(anchor(right) + var(--space-3)); top: anchor(top);
+      position-try-fallbacks: flip-block;
+    }
+  }
+  /* 非対応のブラウザでは、畳んだ列の absolute の札と一覧が overflow に切られて出なくなる。畳んだ列だけ縦に送らず（main と同じ）、
+     札と一覧を列の外に出す */
+  @supports not (anchor-scope: --nav-hit) {
+    .app[data-nav-collapsed="true"] .binding-inner { overflow: visible; }
   }
 
   /* ホバーで出す札。この塊はホバーのできる端末だけなので、押した後に :hover が残る指の端末には当たらない */
@@ -227,8 +250,7 @@ h1, h2, h3 { text-wrap: balance; }
   .app[data-nav-collapsed="true"] .org-menu-button[data-moving="true"][aria-expanded="false"] .nav-tip { display: grid; }
 }
 @media (min-width: 761px) and (hover: hover) and (forced-colors: active) {
-  .app[data-nav-collapsed="true"] .org-menu-invite,
-  .app[data-nav-collapsed="true"] .nav-item-invite { border-color: CanvasText; background: CanvasText; }
+  .app[data-nav-collapsed="true"] .org-menu-invite { border-color: CanvasText; background: CanvasText; }
 }
 /* アカウントのメニュー。上の帯の自分の名前を押すと開く。リストの見た目は組織の切り替えと同じ（上の .org-menu-list と並べて書く）で、
    帯の下に重ねて出す（帯の高さを変えない）。広い幅ではボタンの右端に合わせて開く。760px 以下は、帯が左に寄って
@@ -236,9 +258,18 @@ h1, h2, h3 { text-wrap: balance; }
    どちらも画面の外へはみ出さない */
 .account-menu { position: relative; min-width: 0; max-width: 100%; }
 .account-menu-button {
-  display: inline-flex; align-items: center; gap: var(--space-2); max-width: 100%; text-align: left;
+  position: relative; display: inline-flex; align-items: center; gap: var(--space-2); max-width: 100%; text-align: left;
   padding: 3px var(--space-2); border-radius: var(--radius-1); border: 1px solid transparent; background: none;
   font-size: var(--text-sm); overflow-wrap: anywhere;
+}
+/* 届いた招待の点。読み上げの名前には含めず、強制カラーでも縁で形を残す。 */
+.account-menu-invite {
+  display: block; position: absolute; top: -3px; right: -3px; width: 8px; height: 8px;
+  border-radius: 50%; border: 1px solid var(--color-stamp); background: var(--color-stamp); box-shadow: 0 0 0 2px var(--color-surface);
+}
+.account-menu-badge { margin-left: auto; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-muted); white-space: nowrap; }
+@media (forced-colors: active) {
+  .account-menu-invite { border-color: CanvasText; background: CanvasText; }
 }
 .account-menu-button:hover, .account-menu-button[aria-expanded="true"] { border-color: var(--color-line); background: var(--color-surface); }
 .account-menu-button .me { padding-left: 0; }
@@ -671,7 +702,7 @@ button.entry-title { text-align: left; background: transparent; border: 0; paddi
   .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }
   .binding { border-right: 0; border-bottom: var(--rule-double); }
   .binding-inner {
-    position: static; height: auto;
+    position: static; height: auto; overflow: visible;
     flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--space-3);
     padding-block: var(--space-3);
     padding-left: max(var(--space-4), env(safe-area-inset-left, 0px));
@@ -728,6 +759,7 @@ a.brand { color: inherit; text-decoration: none; }
 .callout-actions { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; margin-left: auto; }
 /* 囲みの中のリンクは、本文と同じ色に下線を引く（既定のリンクの青は、ダークと現代風の地で読めない） */
 .callout a { color: inherit; text-decoration: underline; text-underline-offset: 0.2em; }
+.callout a.btn { text-decoration: none; }
 .callout.is-ok { color: var(--color-ok); background: var(--color-ok-soft); }
 .callout.is-warn { color: var(--color-warn); background: var(--color-warn-soft); }
 .callout.is-info { color: var(--color-accent); background: var(--color-accent-soft); }

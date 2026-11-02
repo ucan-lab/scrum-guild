@@ -1,4 +1,4 @@
-// 自分の設定の「API トークン」の節（ApiTokensSetting.svelte）を svelte/server で HTML にして、初期の描画だけを確かめる。
+// マイプロフィールの「API トークン」の節（ApiTokensSetting.svelte）を svelte/server で HTML にして、初期の描画だけを確かめる。
 // 入力の解釈（problem()）と発行・取消の流れはコンポーネントの中の状態で、純粋な関数に切れていないので、ここでは扱わない（e2e/api-tokens.test.ts）
 import { render } from 'svelte/server';
 import { expect, test, vi } from 'vitest';
@@ -18,7 +18,8 @@ const token = {
   expires_at: '2026-12-31T12:00:00.000Z',
 };
 
-const renderWith = (initial: (typeof token)[] | null) => render(ApiTokensSetting, { props: { initial } }).body;
+const renderWith = (initial: (typeof token)[] | null) =>
+  render(ApiTokensSetting, { props: { initial, canCreate: true, loginProvider: 'github', slug: 'aoba' } }).body;
 
 test('apiToken の辞書のキーは、スクラムの言葉の文言を持つ', () => {
   const keys = Object.keys(dictionary).filter((key) => key.startsWith('apiToken'));
@@ -90,4 +91,36 @@ test('発行の欄の初期値は、範囲が読み取り、有効日数が90で
   expect(body).toContain('max="90"');
   expect(body).not.toContain('二度と見られません');
   expect(body).not.toContain('sgp_');
+});
+
+test.each(['github', 'google'])(
+  '再認証が必要なら発行の欄を出さず、%s のログイン開始へ同じ組織の設定を return_to にして戻す',
+  (provider) => {
+    const body = render(ApiTokensSetting, {
+      props: { initial: [token], canCreate: false, loginProvider: provider, slug: 'hibari' },
+    }).body;
+    expect(body).toContain('ログインし直す');
+    expect(body).toContain(`/api/auth/${provider}/start?return_to=%2Fhibari%2Fme`);
+    expect(body).toContain('data-sveltekit-reload');
+    expect(body).not.toContain('<form');
+    expect(body).toContain('手元の端末');
+    expect(body).toContain('取り消す');
+  },
+);
+
+test('canCreate が true なら発行の欄を出し、再ログインの案内を出さない', () => {
+  const body = renderWith([]);
+  expect(body).toContain('<form');
+  expect(body).not.toContain('ログインし直す');
+});
+
+test('一覧が読めなくても発行の欄を出す', () => {
+  expect(renderWith(null)).toContain('<form');
+});
+
+test('ログインの手段が読めなければ、戻り先を保ったログイン画面へ案内する', () => {
+  const body = render(ApiTokensSetting, {
+    props: { initial: [], canCreate: false, loginProvider: null, slug: 'aoba' },
+  }).body;
+  expect(body).toContain('/login?return_to=%2Faoba%2Fme');
 });

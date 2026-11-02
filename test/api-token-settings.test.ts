@@ -170,6 +170,7 @@ describe('完了条件: 一覧', () => {
     });
     const res = await list(person);
     expect(await res.json()).toEqual({
+      can_create: true,
       tokens: [
         {
           id: hash,
@@ -219,7 +220,7 @@ describe('完了条件: 一覧', () => {
 
   test('1件も無ければ空の配列', async () => {
     const person = await createLoginPerson();
-    expect(await (await list(person)).json()).toEqual({ tokens: [] });
+    expect(await (await list(person)).json()).toEqual({ can_create: true, tokens: [] });
   });
 
   test('一覧を見ても last_used_at を書き換えない', async () => {
