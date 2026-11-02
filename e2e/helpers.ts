@@ -6,6 +6,7 @@ import { workspaceList } from '../src/shared/operations/workspace/workspace-list
 import { sessionCookieName } from '../src/shared/session-cookie.ts';
 import { word, type DictionaryKey, type TemplateParams } from '../src/shared/vocabulary.ts';
 import { mockOperation } from './operations.ts';
+import { refreshSeedSessionCreatedAt } from './local-d1.ts';
 import {
   exclusionsFor,
   formatStaleExclusions,
@@ -592,6 +593,7 @@ export async function signIn(
   who: keyof typeof SEED_SESSIONS,
 ): Promise<void> {
   if (baseURL === undefined) throw new Error('baseURL が無い');
+  await refreshSeedSessionCreatedAt(who);
   await context.addCookies([
     { name: sessionCookieName(baseURL), value: SEED_SESSIONS[who].token, url: baseURL, httpOnly: true },
   ]);

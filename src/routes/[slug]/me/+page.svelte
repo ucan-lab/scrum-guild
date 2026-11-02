@@ -261,7 +261,12 @@
   </aside>
 </div>
 
-<ApiTokensSetting initial={data.tokens} />
+<ApiTokensSetting
+  initial={data.tokens}
+  canCreate={data.canCreateToken}
+  loginProvider={data.loginProvider}
+  slug={data.slug}
+/>
 
 <Section id={LEDGER_ID} title={t('meExperienceTitle')}>
   <p class="action-note">{t('meExperienceDescription')}</p>

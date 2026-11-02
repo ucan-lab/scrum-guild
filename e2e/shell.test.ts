@@ -147,7 +147,10 @@ test('畳んだ列の名前と組織の一覧は、バックログの行に覆�
   await backlog.hover();
   const label = backlog.locator('.nav-item-label');
   await expect(label).toHaveCSS('opacity', '1');
-  expect((await label.boundingBox())!.x).toBeGreaterThanOrEqual(64);
+  const labelBox = await label.boundingBox();
+  const itemBox = await backlog.boundingBox();
+  expect(labelBox!.x).toBeCloseTo(itemBox!.x + itemBox!.width + 12, 0);
+  expect(labelBox!.y + labelBox!.height / 2).toBeCloseTo(itemBox!.y + itemBox!.height / 2, 0);
   expect(await frontmostAcross(page, '#app-nav .nav-item[aria-current="page"] .nav-item-label')).toEqual([
     true,
     true,
@@ -181,6 +184,159 @@ test.describe('ホバーのできない端末（1024px の指のタブレット�
     expect((await page.locator('.brand-name').boundingBox())!.width).toBeGreaterThan(50);
     await expect(page.locator('#app-nav .nav-item-label').first()).toHaveCSS('opacity', '1');
   });
+});
+
+test.describe('高さの低い指で押す画面の左のメニュー', () => {
+  test.use({ hasTouch: true });
+
+  test.beforeEach(async ({ context, baseURL }) => {
+    await signIn(context, baseURL, 'admin');
+  });
+
+  // overflows: 列が画面より長く、中で送る必要がある高さ（1024×600 は項目が収まる）
+  for (const viewport of [
+    { width: 844, height: 390, overflows: true },
+    { width: 1024, height: 600, overflows: false },
+  ]) {
+    test(`${viewport.width}×${viewport.height} の広げた列で、最後の項目とブランドの両方に届く`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      // 管理者がワークスペースを開くと、設定を含むすべての項目と切り替えが並ぶ。
+      await page.goto(`/aoba/w/${AOBA_WORKSPACE_ID}`);
+      await expect(page.locator('.tree-row').first()).toBeVisible();
+      expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
+      await expect(page.locator('.binding')).toHaveJSProperty('offsetWidth', 240);
+
+      const inner = page.locator('.binding-inner');
+      await expect(inner).toHaveCSS('overflow-y', 'auto');
+      const last = page.locator('#app-nav .nav-item').last();
+      await last.scrollIntoViewIfNeeded();
+      await expect(last).toBeInViewport({ ratio: 1 });
+      const overflow = await inner.evaluate((element) => element.scrollHeight - element.clientHeight);
+      if (viewport.overflows) {
+        expect(overflow).toBeGreaterThan(0);
+        await expect.poll(() => inner.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+      } else {
+        expect(overflow).toBeLessThanOrEqual(0);
+      }
+      const href = await last.getAttribute('href');
+      await last.click();
+      await expect(page).toHaveURL(href!);
+
+      // 下まで送った後もブランドへ戻れる。
+      const brand = page.getByRole('link', { name: 'Scrum Guild' });
+      await brand.scrollIntoViewIfNeeded();
+      await expect(brand).toBeInViewport({ ratio: 1 });
+      await brand.click({ trial: true });
+
+      // 広げた列の組織の一覧は列の中に流れ、開いても切れない。
+      await page.locator('.org-menu-button').click();
+      const list = page.getByRole('list', { name: '入れる組織' });
+      await expect(list).toBeVisible();
+      const lastLink = list.getByRole('link').last();
+      await lastLink.scrollIntoViewIfNeeded();
+      await expect(lastLink).toBeInViewport({ ratio: 1 });
+    });
+  }
+});
+
+// 畳んだ列はホバーのできる端末だけに出る。高さの低い窓（細かいポインタ）で列を送った後も、
+// 浮かせた項目名と組織の一覧が、送った項目とボタンの横に揃う
+test.describe('高さの低い窓の畳んだ左のメニュー', () => {
+  test.beforeEach(async ({ context, baseURL }) => {
+    await signIn(context, baseURL, 'admin');
+  });
+
+  for (const viewport of [
+    { width: 1280, height: 500 },
+    { width: 1024, height: 420 },
+  ]) {
+    test(`${viewport.width}×${viewport.height} で列を送っても、項目名の札と組織の一覧が揃う`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await page.goto(`/aoba/w/${AOBA_WORKSPACE_ID}`);
+      await expect(page.locator('.tree-row').first()).toBeVisible();
+      await page.getByRole('button', { name: 'メニューを畳む' }).click();
+      await expect(page.locator('.app')).toHaveAttribute('data-nav-collapsed', 'true');
+      await expect(page.locator('.binding')).toHaveJSProperty('offsetWidth', 64);
+
+      const inner = page.locator('.binding-inner');
+      await expect(inner).toHaveCSS('overflow-y', 'auto');
+      // この検査の前提: 列が画面より長く、中で送る必要がある
+      expect(await inner.evaluate((element) => element.scrollHeight - element.clientHeight)).toBeGreaterThan(0);
+
+      // 列を下まで送り、最後の項目に届いて、札が項目の右・縦の中央に揃う
+      const last = page.locator('#app-nav .nav-item').last();
+      await last.scrollIntoViewIfNeeded();
+      await expect(last).toBeInViewport({ ratio: 1 });
+      await expect.poll(() => inner.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+      await last.hover();
+      const label = last.locator('.nav-item-label');
+      await expect(label).toHaveCSS('opacity', '1');
+      const itemBox = await last.boundingBox();
+      const labelBox = await label.boundingBox();
+      if (!itemBox || !labelBox) throw new Error('項目と札の位置が取れない');
+      expect(labelBox.x).toBeCloseTo(itemBox.x + itemBox.width + 12, 0);
+      expect(labelBox.y + labelBox.height / 2).toBeCloseTo(itemBox.y + itemBox.height / 2, 0);
+      expect(labelBox.y).toBeGreaterThanOrEqual(0);
+      expect(labelBox.y + labelBox.height).toBeLessThanOrEqual(viewport.height);
+
+      // 列を少しだけ送った状態で、開閉のボタンと組織のボタンの札が、それぞれのボタンの右・縦の中央に揃う
+      await inner.evaluate((element) => {
+        element.scrollTop = 40;
+      });
+      for (const button of [page.locator('.nav-toggle'), page.locator('.org-menu-button')]) {
+        await expect(button).toBeInViewport({ ratio: 1 });
+        await button.hover();
+        const tip = button.locator('.nav-tip');
+        await expect(tip).toBeVisible();
+        const buttonBox = await button.boundingBox();
+        const tipBox = await tip.boundingBox();
+        if (!buttonBox || !tipBox) throw new Error('ボタンと札の位置が取れない');
+        expect(tipBox.x).toBeCloseTo(buttonBox.x + buttonBox.width + 12, 0);
+        expect(tipBox.y + tipBox.height / 2).toBeCloseTo(buttonBox.y + buttonBox.height / 2, 0);
+      }
+
+      // その状態で組織の一覧を開くと、一覧がボタンの横に揃い、画面の内側に収まる
+      const org = page.locator('.org-menu-button');
+      await org.click();
+      const list = page.getByRole('list', { name: '入れる組織' });
+      await expect(list).toBeVisible();
+      const listBox = await list.boundingBox();
+      const orgBox = await org.boundingBox();
+      if (!listBox || !orgBox) throw new Error('組織の切り替えの位置が取れない');
+      expect(listBox.x).toBeCloseTo(orgBox.x + orgBox.width + 12, 0);
+      expect(listBox.y).toBeCloseTo(orgBox.y, 0);
+      expect(listBox.y).toBeGreaterThanOrEqual(0);
+      expect(listBox.y + listBox.height).toBeLessThanOrEqual(viewport.height);
+      const first = list.getByRole('link').first();
+      await expect
+        .poll(() =>
+          first.evaluate((element) => {
+            const r = element.getBoundingClientRect();
+            const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+            return hit !== null && element.contains(hit);
+          }),
+        )
+        .toBe(true);
+    });
+  }
+});
+
+// 左のメニューを送り切った後のホイールは、本文を送る（列の端で止めない）
+test('左のメニューを送り切った後にホイールを回すと、本文が送れる', async ({ page, context, baseURL }) => {
+  await signIn(context, baseURL, 'admin');
+  await page.setViewportSize({ width: 1280, height: 300 });
+  await page.goto(`/aoba/w/${AOBA_WORKSPACE_ID}`);
+  await expect(page.locator('.tree-row').first()).toBeVisible();
+  const inner = page.locator('.binding-inner');
+  await inner.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  // この検査の前提: 列が溢れ（送り切れる）、本文も画面より長い
+  expect(await inner.evaluate((element) => element.scrollHeight - element.clientHeight)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => document.documentElement.scrollHeight > innerHeight)).toBe(true);
+  await page.mouse.move(100, 150);
+  await page.mouse.wheel(0, 400);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
 });
 
 test('畳んだ列のまま、全テーマでアクセシビリティの検査と CSP の違反が無い', async ({ page }) => {

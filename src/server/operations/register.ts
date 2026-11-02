@@ -63,6 +63,9 @@ function tokenCall(): CurrentSession {
     get tokenHash(): string {
       return unavailable();
     },
+    get createdAt(): string {
+      return unavailable();
+    },
     clearCookie: unavailable,
   };
 }
@@ -257,6 +260,7 @@ async function execute(
     cookie.extend = read.refreshed && token !== undefined;
     session = {
       tokenHash: read.tokenHash,
+      createdAt: read.createdAt,
       clearCookie: () => {
         cookie.clear = true;
       },

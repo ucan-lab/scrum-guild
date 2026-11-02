@@ -32,6 +32,8 @@ export const errorCodes = [
   // （organization-admin-reassign）を断る。消している途中で戻さない、組織の中に行を足さないため。
   // 境目は消す SQL のガードと同じで、予定日の当日まではできる。画面は「消す予定日を過ぎたので、どれもできない」を出す
   'purge_due',
+  // API トークンの発行（token-create）で、ログインから API_TOKEN_REAUTH_MINUTES 分を超えている。403。401 ではない（画面がログインの画面へ移さない）
+  'reauth_required',
   // 操作の回数の上限（定義の rateLimit）を超えた。429
   'rate_limited',
   'internal',

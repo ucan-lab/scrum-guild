@@ -12,6 +12,8 @@ export type Session = {
   accountId: string;
   // sessions.token_hash。ログアウトが今のセッションの行を指すのに使う
   tokenHash: string;
+  // sessions.created_at。再認証の猶予の起点（延長しても変わらない）
+  createdAt: string;
   // last_used_at と expires_at を書き直した。Cookie の期限も延ばす
   refreshed: boolean;
 };
@@ -36,14 +38,18 @@ export async function readSession(
   const db = commonDb(env);
   const row = await db.first(
     db.statement((q) =>
-      q.selectFrom('sessions').select(['account_id', 'last_used_at', 'expires_at']).where('token_hash', '=', tokenHash),
+      q
+        .selectFrom('sessions')
+        .select(['account_id', 'created_at', 'last_used_at', 'expires_at'])
+        .where('token_hash', '=', tokenHash),
     ),
   );
   if (row === undefined || row.expires_at <= now.toISOString()) return undefined;
 
   // 日時が読めない行は、書き直して直す
   const idleMs = now.getTime() - Date.parse(row.last_used_at);
-  if (idleMs < REFRESH_AFTER_MS) return { accountId: row.account_id, tokenHash, refreshed: false };
+  if (idleMs < REFRESH_AFTER_MS)
+    return { accountId: row.account_id, tokenHash, createdAt: row.created_at, refreshed: false };
 
   try {
     const [result] = await db.batch([
@@ -55,7 +61,7 @@ export async function readSession(
           .where('last_used_at', '=', row.last_used_at),
       ),
     ]);
-    return { accountId: row.account_id, tokenHash, refreshed: result.changes === 1 };
+    return { accountId: row.account_id, tokenHash, createdAt: row.created_at, refreshed: result.changes === 1 };
   } catch (err) {
     // 例外の message に SQL や接続の詳細が混ざりうるので、名前だけを残す
     console.error(
@@ -67,7 +73,7 @@ export async function readSession(
         error: err instanceof Error ? err.name : typeof err,
       }),
     );
-    return { accountId: row.account_id, tokenHash, refreshed: false };
+    return { accountId: row.account_id, tokenHash, createdAt: row.created_at, refreshed: false };
   }
 }
 
