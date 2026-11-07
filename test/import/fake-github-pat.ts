@@ -34,6 +34,9 @@ export function createFakePatGithub() {
   const calls: FakePatCall[] = [];
   let next: FakeFailure | undefined;
   const pageFailures = new Map<number, FakeFailure>();
+  const issuePageFailures = new Map<number, FakeFailure>();
+  const issues = new Map<number, unknown[]>();
+  let looseFilters = false;
 
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -89,6 +92,39 @@ export function createFakePatGithub() {
       }
     }
 
+    const issuesMatch = /^\/repositories\/(\d+)\/issues$/.exec(parsed.pathname);
+    if (parsed.origin === 'https://api.github.com' && issuesMatch !== null) {
+      const pageFailure = issuePageFailures.get(page);
+      if (pageFailure !== undefined) {
+        issuePageFailures.delete(page);
+        return fail(pageFailure);
+      }
+      if (!accounts.has((headers['authorization'] ?? '').replace(/^Bearer /, ''))) {
+        return json({ message: 'Bad credentials' }, 401);
+      }
+      const all = (issues.get(Number(issuesMatch[1])) ?? []) as Record<string, unknown>[];
+      const state = parsed.searchParams.get('state') ?? 'open';
+      const assignee = parsed.searchParams.get('assignee');
+      const since = parsed.searchParams.get('since');
+      const asc = parsed.searchParams.get('direction') === 'asc';
+      let list = all;
+      if (!looseFilters) {
+        list = all.filter((item) => {
+          if (state !== 'all' && item.state !== state) return false;
+          const assignees = (item.assignees ?? []) as { login: string }[];
+          if (assignee !== null && !assignees.some((a) => a.login === assignee)) return false;
+          return since === null || String(item.updated_at) >= since;
+        });
+      }
+      list = [...list].sort((a, b) =>
+        asc
+          ? String(a.updated_at).localeCompare(String(b.updated_at))
+          : String(b.updated_at).localeCompare(String(a.updated_at)),
+      );
+      const perPage = Math.min(Number(parsed.searchParams.get('per_page') ?? '30'), 100);
+      return json(list.slice((page - 1) * perPage, page * perPage));
+    }
+
     const account = accounts.get((headers['authorization'] ?? '').replace(/^Bearer /, ''));
     if (account === undefined) return json({ message: 'Bad credentials' }, 401);
     if (parsed.origin + parsed.pathname === FAKE_PAT_USER_URL) return json(account.owner);
@@ -114,10 +150,51 @@ export function createFakePatGithub() {
     failOnPage(page: number, failure: FakeFailure): void {
       pageFailures.set(page, failure);
     },
+    // GET /repositories/{id}/issues が返す Issue（GitHub の応答の形。PR は pull_request を持つ）
+    addIssues(repoId: number, list: unknown[]): void {
+      issues.set(repoId, list);
+    },
+    // /repositories/{id}/issues の n 頁目（1回だけ）を失敗させる
+    failOnIssuePage(page: number, failure: FakeFailure): void {
+      issuePageFailures.set(page, failure);
+    },
+    // assignee、state、since の絞り込みを無視して全部返す（実装側でも絞ることの確かめ用）
+    ignoreIssueFilters(): void {
+      looseFilters = true;
+    },
   };
 }
 
 export type FakePatGithub = ReturnType<typeof createFakePatGithub>;
+
+export type FakeIssueOptions = {
+  id?: number;
+  number?: number;
+  assignees?: string[];
+  state?: 'open' | 'closed';
+  pr?: boolean;
+  updatedAt?: string;
+  dueOn?: string | null;
+  title?: string;
+};
+
+// 架空の Issue（GitHub の応答の形）。n が違えば id、番号、更新日時（n 分）が変わる
+export function fakeIssue(repoFullName: string, n: number, options: FakeIssueOptions = {}) {
+  const number = options.number ?? n;
+  const logins = options.assignees ?? ['fake-ranger'];
+  return {
+    id: options.id ?? 500_000 + n,
+    number,
+    title: options.title ?? `架空の課題 ${n}`,
+    state: options.state ?? 'open',
+    html_url: `https://github.com/${repoFullName}/issues/${number}`,
+    assignees: logins.map((login) => ({ login })),
+    assignee: logins[0] === undefined ? null : { login: logins[0] },
+    updated_at: options.updatedAt ?? new Date(Date.UTC(2026, 0, 1, 0, 0, 0) + n * 60_000).toISOString(),
+    milestone: options.dueOn === undefined || options.dueOn === null ? null : { due_on: options.dueOn },
+    ...(options.pr ? { pull_request: { url: `https://api.github.com/repos/${repoFullName}/pulls/${number}` } } : {}),
+  };
+}
 
 // 架空のリポジトリの一覧。id は offset から連番
 export function fakeRepos(count: number, offset = 1000): FakeRepo[] {
