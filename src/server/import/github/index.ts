@@ -6,6 +6,8 @@
 import {
   ImportSourceError,
   type CredentialOwner,
+  type FetchPageInput,
+  type FetchPageResult,
   type ImportSource,
   type ImportSourceFailure,
   type ScopeCandidate,
@@ -127,6 +129,12 @@ async function listScopeCandidates(credential: string, fetcher: typeof fetch): P
   throw fail('unavailable');
 }
 
+// 担当の Issue の取得と変換は #923 で足す。それまでは取り込み元に届かない扱いにして、同期は次で再試行する
+async function fetchPage(input: FetchPageInput): Promise<FetchPageResult> {
+  void input;
+  throw fail('unavailable');
+}
+
 export const githubImportSource: ImportSource = {
   kind: 'github',
   scopeKind: 'repository',
@@ -141,4 +149,5 @@ export const githubImportSource: ImportSource = {
   },
   verifyCredential,
   listScopeCandidates,
+  fetchPage,
 };

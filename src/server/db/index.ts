@@ -17,6 +17,18 @@ export { activeSprintRowFilter } from './active-sprint-filter.ts';
 export { pendingEmailInvitationRowFilter } from './pending-email-invitation-filter.ts';
 export { uuidv7Sql } from './uuid-sql.ts';
 export { tailPosition } from './tail-position.ts';
+// 取り込みの同期（src/server/import/sync.ts）が使う文
+export {
+  importTaskStatements,
+  readInboxTailPosition,
+  readRepositoriesByContainer,
+  readSyncConnection,
+  syncOutcomeStatement,
+  type ImportedTask,
+  type SyncConnection,
+  type SyncOutcome,
+  type SyncScope,
+} from './import-sync.ts';
 export { titleContainsAll } from './title-search.ts';
 export { purgeDueInDatabase, purgeNotDue } from './purge-due.ts';
 export { unindexed } from './unindexed.ts';
