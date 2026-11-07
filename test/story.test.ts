@@ -2,6 +2,7 @@
 // 組織の分離と権限の種類ごとの許可と拒否は、一覧を回す test/operation-registry.test.ts が確かめる
 import { env } from 'cloudflare:workers';
 import { describe, expect, test } from 'vitest';
+import { setFixedNow } from '../src/shared/clock.ts';
 import { storyCreate, storyGet, storyUpdate } from '../src/shared/operations/story/index.ts';
 import { createApp } from '../src/server/app.ts';
 import { orgDb, verifyWorkspace } from '../src/server/db/index.ts';
@@ -820,6 +821,28 @@ describe('story-update', () => {
       expect(updates).toBe(1);
       expect(result.story).toMatchObject({ title: 'Bのタイトル', link_url: 'https://example.com/a' });
       expect(await logsOf(target, story.id)).toHaveLength(2);
+    });
+
+    test('止めた時計で、同じ値を書く2つの更新が競っても、履歴は1行だけ', async () => {
+      setFixedNow(new Date(FROZEN_ISO));
+      try {
+        const target = await createTarget();
+        const story = await createStory(target.organization, target.workspace.id, target.admin.userId!, {
+          title: '元のタイトル',
+        });
+        // 要求 B は「元のタイトル」を読んだ。書く前に、要求 A が同じ時刻に同じ値へ変える。B の更新は通らず、読み直すと変える欄が無い
+        await updateWithRace(target, target.member, { story_id: story.id, title: '新' }, async (n) => {
+          if (n === 1)
+            expect((await update(target, story.id, { title: '新' }, target.leader, frozenEnv(FROZEN_ISO))).status).toBe(
+              200,
+            );
+        });
+        const logs = await logsOf(target, story.id);
+        expect(logs).toHaveLength(1);
+        expect(JSON.parse(logs[0]!.changes_json)).toEqual({ title: ['元のタイトル', '新'] });
+      } finally {
+        setFixedNow(undefined);
+      }
     });
 
     test('負け続けて3回やり直しても書けなければ、409 の conflict で、履歴は書かない', async () => {

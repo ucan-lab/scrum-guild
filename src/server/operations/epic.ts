@@ -1,16 +1,21 @@
 import { generateKeyBetween } from 'fractional-indexing';
 import { now } from '../../shared/clock.ts';
 import { EPIC_DEFAULT_REWARD_TIER } from '../../shared/epic.ts';
-import { canonicalLinkUrl, linkUrlProblem, normalizeLinkUrl, normalizeLongText } from '../../shared/story.ts';
 import { epicCreate, epicGet, epicMove, epicUpdate, type EpicDetail } from '../../shared/operations/epic/index.ts';
-import {
-  previousStatementChanged,
-  type OrganizationDb,
-  type OrganizationTables,
-  type QueryCreator,
-} from '../db/index.ts';
+import { type OrganizationDb, type OrganizationTables, type QueryCreator } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
+import {
+  asIs,
+  changeLogStatement,
+  linkUrl,
+  type MergeFields,
+  longText,
+  mergeTargetConditions,
+  readMergeTarget,
+  staleFields,
+  trimmed,
+} from './change-log-merge.ts';
 import { categoryRow, readCategoryRef, refOf } from './definition-refs.ts';
 import { implement } from './implement.ts';
 import {
@@ -232,6 +237,14 @@ function diffOf(current: EpicRow, input: UpdatedFields, nextCategory: { id: stri
   return { values, changes, isEmpty: Object.keys(changes).length === 0 };
 }
 
+// 照合とまとめの欄。expected の照合と履歴のまとめは change-log-merge.ts が受け持つ（story-update、task-update と共通）
+const MERGE_FIELDS = {
+  title: trimmed,
+  body_md: longText,
+  due_on: asIs,
+  link_url: linkUrl,
+} satisfies MergeFields<(typeof EDITABLE_FIELDS)[number]>;
+
 // 書き方は story-update と同じ（src/server/operations/story.ts）。読んだ値からの差を、読んだ値のままなら、という条件つきで書き、
 // 通らなかったら読み直して差を作り直す。履歴だけは、直前の UPDATE に結ぶ（previousStatementChanged）
 export const epicUpdateOperation = implement(epicUpdate, async ({ db, actor, workspace, input }) => {
@@ -239,6 +252,7 @@ export const epicUpdateOperation = implement(epicUpdate, async ({ db, actor, wor
   const organizationId = db.organizationId;
   const workspaceId = workspace.workspaceId;
   const epicId = input.epic_id;
+  const entity = { entityType: 'epic', workspaceId, entityId: epicId } as const;
 
   for (let attempt = 0; attempt < MAX_UPDATE_ATTEMPTS; attempt++) {
     const current = await readEpic(db, workspaceId, epicId);
@@ -259,7 +273,7 @@ export const epicUpdateOperation = implement(epicUpdate, async ({ db, actor, wor
     }
 
     // 書き始める前の値が今と違う欄があれば、何も書かずに今の値を返す
-    const stale = staleFields(current, values, input.expected);
+    const stale = staleFields(MERGE_FIELDS, current, values, input.expected);
     if (Object.keys(stale).length > 0) {
       await throwIfClosed(db, workspaceId);
       throw new ApiError(409, 'conflict', { reason: 'stale', current: stale });
@@ -267,7 +281,7 @@ export const epicUpdateOperation = implement(epicUpdate, async ({ db, actor, wor
 
     const at = now();
     const updatedAt = at.toISOString();
-    const mergeTarget = await readMergeTarget(db, workspaceId, epicId, actorUserId, changes, at);
+    const mergeTarget = await readMergeTarget(db, MERGE_FIELDS, entity, actorUserId, changes, at);
     const results = await db.batch([
       db.statement((q) =>
         q
@@ -280,37 +294,7 @@ export const epicUpdateOperation = implement(epicUpdate, async ({ db, actor, wor
               eb('deleted_at', 'is', null),
               eb.exists(openWorkspace(q, organizationId, workspaceId)),
               // まとめる行が、読んだときのまま、かつ、まだこのエピックの最新の履歴の行（変わっていたら何も書かず、読み直してやり直す）
-              ...(mergeTarget === undefined
-                ? []
-                : [
-                    eb.exists(
-                      q
-                        .selectFrom('change_logs')
-                        .select('change_logs.id')
-                        .where('change_logs.id', '=', mergeTarget.id)
-                        .where('change_logs.organization_id', '=', organizationId)
-                        .where('change_logs.changes_json', '=', mergeTarget.changesJson),
-                    ),
-                    eb.not(
-                      eb.exists(
-                        q
-                          .selectFrom('change_logs')
-                          .select('change_logs.id')
-                          .where('change_logs.organization_id', '=', organizationId)
-                          .where('change_logs.entity_type', '=', 'epic')
-                          .where('change_logs.entity_id', '=', epicId)
-                          .where((newer) =>
-                            newer.or([
-                              newer('change_logs.created_at', '>', mergeTarget.createdAt),
-                              newer.and([
-                                newer('change_logs.created_at', '=', mergeTarget.createdAt),
-                                newer('change_logs.id', '>', mergeTarget.id),
-                              ]),
-                            ]),
-                          ),
-                      ),
-                    ),
-                  ]),
+              ...mergeTargetConditions(eb, organizationId, entity, mergeTarget),
               // 書く欄が、読んだときの値のまま
               ...(values.title === undefined ? [] : [eb('title', 'is', current.title)]),
               ...(values.body_md === undefined ? [] : [eb('body_md', 'is', current.body_md)]),
@@ -323,43 +307,8 @@ export const epicUpdateOperation = implement(epicUpdate, async ({ db, actor, wor
             ]),
           ),
       ),
-      // 直前の UPDATE が行を変えたときだけ履歴を書く（docs/data-model.md の「直前の文に結ぶ」）。
-      // まとめる行があれば（同じ人が数分以内に同じ欄だけを続けて直した）、行を足さずにその行の「後」の値と時刻を書き換える（「前」は最初のまま）。
-      // まとめる行が読んだときのままであることは、上の主文の条件に入れてあるので、主文が通った後のこの文は必ず当たる
-      mergeTarget !== undefined
-        ? db.statement((q) =>
-            q
-              .updateTable('change_logs')
-              .set({
-                changes_json: JSON.stringify({
-                  [mergeTarget.field]: [mergeTarget.before, changes[mergeTarget.field]?.[1]],
-                }),
-                created_at: updatedAt,
-              })
-              .where('id', '=', mergeTarget.id)
-              .where('organization_id', '=', organizationId)
-              .where(previousStatementChanged),
-          )
-        : db.statement((q) =>
-            q
-              .insertInto('change_logs')
-              .columns(changeLogColumns)
-              .expression(
-                q
-                  .selectNoFrom((eb) => [
-                    eb.val(uuidv7(at)).as('id'),
-                    eb.val(organizationId).as('organization_id'),
-                    eb.val(workspaceId).as('workspace_id'),
-                    eb.val(actorUserId).as('actor_user_id'),
-                    eb.val('epic').as('entity_type'),
-                    eb.val(epicId).as('entity_id'),
-                    eb.val('update').as('action'),
-                    eb.val(JSON.stringify(changes)).as('changes_json'),
-                    eb.val(updatedAt).as('created_at'),
-                  ])
-                  .where(previousStatementChanged),
-              ),
-          ),
+      // 直前の UPDATE が行を変えたときだけ履歴を書く（docs/data-model.md の「直前の文に結ぶ」）。まとめる行があれば、行を足さずに書き換える
+      changeLogStatement(db, entity, { actorUserId, at, changes, mergeTarget }),
     ]);
 
     if ((results[0]?.changes ?? 0) > 0) {
@@ -374,96 +323,6 @@ export const epicUpdateOperation = implement(epicUpdate, async ({ db, actor, wor
   }
   throw new ApiError(409, 'conflict');
 });
-
-// 続けて直した分を1行にまとめる間（story-update と同じ。docs/data-model.md の「続けて直した分のまとめ」）
-const HISTORY_MERGE_WINDOW_MS = 5 * 60 * 1000;
-const MERGEABLE_FIELDS = EDITABLE_FIELDS;
-
-// expected は入力の検証で正規化されて届く。正規化の決まりより前に保存された値とも比べられるよう、今の値も同じに正規化して比べる
-function normalizedForCompare(field: (typeof MERGEABLE_FIELDS)[number], value: unknown): unknown {
-  if (typeof value !== 'string') return value;
-  if (field === 'title') return value.trim();
-  if (field === 'body_md') return normalizeLongText(value);
-  if (field === 'link_url') {
-    const link = normalizeLinkUrl(value);
-    return link === null || linkUrlProblem(link) !== null ? link : canonicalLinkUrl(link);
-  }
-  // due_on は正規化の決まりが無い。欄を足したら、epicUpdate の expected と、ここの正規化の要否を決める（足し忘れは型で落ちる）
-  field satisfies 'due_on';
-  return value;
-}
-
-// 書き始める前の値（expected）が、サーバーの今の値と違う欄。書く欄だけを見る（送った値が今の値と同じなら、書かないので断らない）
-function staleFields(current: EpicRow, values: UpdatedFields, expected: UpdatedFields | undefined) {
-  const stale: Record<string, unknown> = {};
-  if (expected === undefined) return stale;
-  for (const field of MERGEABLE_FIELDS) {
-    if (values[field] === undefined || expected[field] === undefined) continue;
-    if (expected[field] !== normalizedForCompare(field, current[field])) stale[field] = current[field];
-  }
-  return stale;
-}
-
-type MergeTarget = {
-  id: string;
-  createdAt: string;
-  changesJson: string;
-  field: (typeof MERGEABLE_FIELDS)[number];
-  before: unknown;
-};
-
-// 履歴を足す代わりに書き換える行。同じ人が、同じエピックで、同じ1つの欄だけを直した直前の行が、間の中にあるときだけ。
-// 直前の行は、そのエピックの最新の履歴の行（間に別の履歴が挟まっていればまとめない）
-async function readMergeTarget(
-  db: OrganizationDb,
-  workspaceId: string,
-  epicId: string,
-  actorUserId: string | null,
-  changes: Record<string, [unknown, unknown]>,
-  at: Date,
-): Promise<MergeTarget | undefined> {
-  const keys = Object.keys(changes);
-  const field = MERGEABLE_FIELDS.find((name) => name === keys[0]);
-  if (actorUserId === null || keys.length !== 1 || field === undefined) return undefined;
-  const latest = await db.first(
-    db.statement((q) =>
-      q
-        .selectFrom('change_logs')
-        .select(['id', 'actor_user_id', 'action', 'changes_json', 'created_at'])
-        .where('organization_id', '=', db.organizationId)
-        .where('workspace_id', '=', workspaceId)
-        .where('entity_type', '=', 'epic')
-        .where('entity_id', '=', epicId)
-        .orderBy('created_at', 'desc')
-        .orderBy('id', 'desc')
-        .limit(1),
-    ),
-  );
-  if (latest === undefined || latest.action !== 'update' || latest.actor_user_id !== actorUserId) return undefined;
-  // 間の起点は、行を最初に書いた時刻（ID の UUIDv7 の先頭48ビット）。ID が UUIDv7 でない行は、時刻と読めないのでまとめない
-  const idHex = latest.id.replaceAll('-', '');
-  if (idHex.length !== 32 || idHex[12] !== '7') return undefined;
-  const firstWrittenAt = Number.parseInt(idHex.slice(0, 12), 16);
-  const elapsed = at.getTime() - firstWrittenAt;
-  if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed > HISTORY_MERGE_WINDOW_MS) return undefined;
-  const latestAt = Date.parse(latest.created_at);
-  if (Number.isNaN(latestAt) || at.getTime() < latestAt) return undefined;
-  let logged: unknown;
-  try {
-    logged = JSON.parse(latest.changes_json);
-  } catch {
-    return undefined;
-  }
-  if (typeof logged !== 'object' || logged === null || Array.isArray(logged)) return undefined;
-  const entries = Object.entries(logged);
-  const pair = entries[0]?.[1];
-  if (entries.length !== 1 || entries[0]?.[0] !== field || !Array.isArray(pair) || pair.length !== 2) return undefined;
-  // 今の値と、履歴の「後」が合っているときだけ（合わなければ、間に別の経路が書いている）
-  if (JSON.stringify(pair[1]) !== JSON.stringify(changes[field]?.[0])) return undefined;
-  // 元の値へ戻す変更は、まとめると「前」と「後」が同じ行が残るので、まとめずに別の行にする
-  if (JSON.stringify(pair[0]) === JSON.stringify(changes[field]?.[1])) return undefined;
-  return { id: latest.id, createdAt: latest.created_at, changesJson: latest.changes_json, field, before: pair[0] };
-}
 
 type From = Pick<QueryCreator<OrganizationTables>, 'selectFrom'>;
 

@@ -2,6 +2,7 @@
 // 組織の分離と権限の種類ごとの許可と拒否は、一覧を回す test/operation-registry.test.ts が確かめる
 import { env } from 'cloudflare:workers';
 import { describe, expect, test } from 'vitest';
+import { setFixedNow } from '../src/shared/clock.ts';
 import { epicCreate, epicGet, epicUpdate } from '../src/shared/operations/epic/index.ts';
 import { createApp } from '../src/server/app.ts';
 import { orgDb, verifyWorkspace } from '../src/server/db/index.ts';
@@ -454,6 +455,26 @@ describe('epic-update', () => {
       const titles = (await logsOf(target, epic.id)).map((log) => JSON.parse(log.changes_json).title);
       expect(titles).toContainEqual(['元のタイトル', 'A']);
       expect(titles).toContainEqual(['A', 'B']);
+    });
+
+    test('止めた時計で、同じ値を書く2つの更新が競っても、履歴は1行だけ', async () => {
+      setFixedNow(new Date(FROZEN_ISO));
+      try {
+        const target = await createTarget();
+        const epic = await seeded(target);
+        // 要求 B は「元のタイトル」を読んだ。書く前に、要求 A が同じ時刻に同じ値へ変える。B の更新は通らず、読み直すと変える欄が無い
+        await updateWithRace(target, { epic_id: epic.id, title: '新' }, async (n) => {
+          if (n === 1)
+            expect((await update(target, epic.id, { title: '新' }, target.leader, frozenEnv(FROZEN_ISO))).status).toBe(
+              200,
+            );
+        });
+        const logs = await logsOf(target, epic.id);
+        expect(logs).toHaveLength(1);
+        expect(JSON.parse(logs[0]!.changes_json)).toEqual({ title: ['元のタイトル', '新'] });
+      } finally {
+        setFixedNow(undefined);
+      }
     });
 
     test('負け続けて3回やり直しても書けなければ、409 の conflict で、履歴は書かない', async () => {

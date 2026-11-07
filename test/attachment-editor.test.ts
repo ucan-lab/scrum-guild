@@ -397,3 +397,33 @@ describe('コメントと決まった欄の保存も添付と同時に確定す�
     ).toBeUndefined();
   });
 });
+
+describe('添付つきの保存は、直前の履歴にまとめない（履歴の共通処理 change-log-merge.ts）', () => {
+  test('同じ欄を続けて直しても、添付を付けた保存は新しい行になり、attachments を残す', async () => {
+    const { target, task } = await fixture();
+    expect((await save(target, task.id, [], { body_md: '一回目' })).status).toBe(200);
+    const { row } = await storedFile(target);
+    expect((await save(target, task.id, [row.id], { body_md: '二回目' })).status).toBe(200);
+    const db = orgDb(env, target.organization.verified);
+    const logs = await db.rows(
+      db.statement((q) =>
+        q
+          .selectFrom('change_logs')
+          .select('changes_json')
+          .where('entity_type', '=', 'task')
+          .where('entity_id', '=', task.id)
+          .where('organization_id', '=', target.organization.id)
+          .orderBy('created_at')
+          .orderBy('id'),
+      ),
+    );
+    // 2回の保存が同じミリ秒に入ると並びが入れ替わりうるので、並びに頼らず内容で確かめる
+    expect(logs.map((log) => JSON.parse(log.changes_json))).toHaveLength(2);
+    expect(logs.map((log) => JSON.parse(log.changes_json))).toEqual(
+      expect.arrayContaining([
+        { body_md: ['保存前', '一回目'] },
+        { body_md: ['一回目', '二回目'], attachments: [null, [{ id: row.id }]] },
+      ]),
+    );
+  });
+});
